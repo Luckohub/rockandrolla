@@ -1,0 +1,14 @@
+# Salidas de compilación (reproducibles con scripts/build.ps1)
+/build/
+/web/engine/rockanrola.js
+/web/engine/rockanrola.wasm
+
+# Nunca versionar recursos del juego
+*.sfc
+*.smc
+*.SFC
+*.SMC
+*.ppm
+Rom/
+
+node_modules/

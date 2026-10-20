@@ -1,0 +1,33 @@
+Rockanrola - avisos de licencias de terceros
+=============================================
+
+Este sitio publica un módulo WebAssembly (engine/rockanrola.wasm) compilado a
+partir de las siguientes fuentes.
+
+1. Rock n' Roll Racing (SNES) Static Recompilation 1.0.0
+   Autor: Junior-Jones
+   https://github.com/Junior-Jones/Rock-N-Roll-Racing-SNES-Static-Recomp
+   Commit: 4f4a9a62cecd349ae7acdce8c4b75532f3733ca3
+   El repositorio no incluye una licencia explícita para su propio código.
+   GitHub muestra "zlib", pero ese texto corresponde a SDL-LICENSE.txt
+   (la licencia de SDL), no al proyecto. Ver docs/INFORME-VIABILIDAD.md.
+   Rockanrola no usa SDL: el módulo web no la incluye.
+
+2. Snes9x / byuu S-SMP (código semántico derivado del procesador de audio)
+   La biblioteca S-SMP generada de antemano conserva el aviso de Snes9x.
+   Uso permitido solo con fines no comerciales. Texto completo en
+   SNES9X-LICENSE.txt, en esta misma carpeta.
+
+3. Código propio de Rockanrola (port/, web/, scripts/)
+   Licencia zlib. Ver LICENSE en el repositorio.
+
+4. Emscripten 6.0.10 (bibliotecas de sistema enlazadas: musl libc,
+   libc++, libc++abi, compiler-rt)
+   Licencias MIT / University of Illinois NCSA / Apache-2.0 con excepción
+   LLVM, según https://github.com/emscripten-core/emscripten/blob/main/LICENSE
+
+Juego original
+--------------
+Rock n' Roll Racing, su ROM, música, gráficos y demás recursos pertenecen a
+sus titulares. Este sitio no los distribuye: cada persona aporta su propia
+copia legal, que se procesa solo en su navegador.

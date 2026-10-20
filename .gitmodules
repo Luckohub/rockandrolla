@@ -1,0 +1,3 @@
+[submodule "third_party/rnrr-recomp"]
+	path = third_party/rnrr-recomp
+	url = https://github.com/Junior-Jones/Rock-N-Roll-Racing-SNES-Static-Recomp
