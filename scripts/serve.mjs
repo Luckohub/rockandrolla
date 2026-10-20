@@ -42,14 +42,15 @@ const TYPES = {
 };
 
 export const CSP = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; " +
-  "style-src 'self'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; " +
+  "style-src 'self'; img-src 'self' data:; connect-src 'self' https://0.peerjs.com wss://0.peerjs.com; media-src 'self' blob: mediastream:; worker-src 'self'; " +
   "object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'";
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (url.pathname === '/local-rom') {
     const rom = await findLocalRom();
-    if (!rom) { res.writeHead(404, { 'Cache-Control': 'no-store' }).end(); return; }
+    // 204 = "no local ROM" without logging a failed request in the browser.
+    if (!rom) { res.writeHead(204, { 'Cache-Control': 'no-store' }).end(); return; }
     const body = await readFile(rom);
     res.writeHead(200, {
       'Content-Type': 'application/octet-stream',

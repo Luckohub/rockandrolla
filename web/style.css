@@ -98,10 +98,17 @@ main { flex: 1; width: 100%; max-width: 1100px; margin: 0 auto; padding: 0 16px;
   display: flex; align-items: center; justify-content: center;
   border-radius: var(--radius); overflow: hidden;
 }
-.game-frame:fullscreen { height: 100vh; border-radius: 0; }
+/* The picture is fitted ("contain") purely in CSS with container query
+   units, so fullscreen, window resizes and display scaling never crop it.
+   --ar-w/--ar-h select 4:3 (TV) or 8:7 (square pixels). */
+.game-frame { container-type: size; --ar-w: 4; --ar-h: 3; }
+.game-frame[data-aspect="8:7"] { --ar-w: 8; --ar-h: 7; }
+.game-frame:fullscreen { width: 100vw; height: 100vh; max-width: none; border-radius: 0; }
 #pantalla {
   image-rendering: pixelated; image-rendering: crisp-edges;
-  display: block; background: #000;
+  display: block; background: #000; flex: none;
+  width: min(100cqw, 100cqh * var(--ar-w) / var(--ar-h));
+  height: min(100cqh, 100cqw * var(--ar-h) / var(--ar-w));
 }
 .sound-hint {
   position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
@@ -148,3 +155,40 @@ kbd {
   .screen { padding: 24px 0; }
   .toolbar .btn { flex: 1 1 40%; }
 }
+
+/* ---- Remote video (guest): same CSS "contain" fit as the canvas ---- */
+#video-remoto {
+  display: block; background: #000; flex: none; object-fit: fill;
+  image-rendering: pixelated;
+  width: min(100cqw, 100cqh * var(--ar-w) / var(--ar-h));
+  height: min(100cqh, 100cqw * var(--ar-h) / var(--ar-w));
+}
+.guest-title { margin: 0 0 12px; }
+
+.btn-accent { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-accent:hover { filter: brightness(1.08); border-color: var(--accent); }
+
+.join-form { max-width: 460px; margin: 28px auto 0; text-align: left; color: var(--muted); }
+.join-form label { display: block; margin-bottom: 6px; font-size: .95rem; }
+.copy-row { display: flex; gap: 8px; }
+.copy-row input {
+  flex: 1; min-width: 0; font: inherit; color: var(--text); background: var(--bg-2);
+  border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px;
+}
+.copy-row input:focus-visible { outline: 3px solid var(--accent-2); outline-offset: 1px; }
+
+.hud-online { color: var(--ok); }
+
+/* ---- Dialogs ---- */
+.dialog {
+  color: var(--text); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 14px; padding: 20px; width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px); overflow: auto;
+}
+.dialog::backdrop { background: rgba(8, 6, 14, .72); }
+.dialog h2 { margin-top: 0; }
+.dialog .row { margin-top: 12px; justify-content: flex-end; }
+.remap th, .remap td { padding: 4px 6px; }
+.key-slot { width: 100%; min-width: 96px; font-family: ui-monospace, Consolas, monospace; font-size: .9rem; padding: 6px 8px; }
+.key-slot.capturing { border-color: var(--accent-2); color: var(--accent-2); }
+#btn-teclas-info { margin-top: 10px; }

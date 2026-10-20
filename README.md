@@ -87,6 +87,31 @@ make -C port -j4 web tests
 
 Los dos juegos de teclas reproducen los perfiles "clásico" y "predeterminado" del lanzador original. La página se pausa sola al cambiar de pestaña.
 
+**Cambiar las teclas:** usá el botón **Teclas** durante el juego, o **Configurar teclas** en la sección Controles.
+
+- Cada botón del SNES admite dos teclas.
+- Si asignás una tecla que ya estaba en uso, se quita de su lugar anterior.
+- La configuración queda guardada en el navegador.
+- Abrir la ventana pausa el juego, y cerrarla lo reanuda.
+- `Esc`, `Tab` y `F1` a `F12` están reservadas. `P` pausa mientras no la asignes a un botón.
+
+## Jugar online con otra persona
+
+El juego corre en tu equipo, con tu ROM. La otra persona abre un enlace y ve tu pantalla en vivo, con sonido, y maneja el **mando 2** con su teclado o su mando. No necesita la ROM ni instalar nada.
+
+1. Durante el juego, pulsá **Jugar online**. Se abre una sala con un código de 6 letras.
+2. Pulsá **Copiar** y mandale el enlace a la otra persona.
+3. La otra persona abre el enlace y pulsa **Unirse**. También puede pegar el código en la portada.
+4. Para correr a dos jugadores, elijan ese modo en el menú del juego.
+
+Detalles:
+
+- **Conexión:** el servidor público gratuito de PeerJS solo presenta a los dos navegadores. Imagen, sonido y controles viajan directo entre los equipos por WebRTC. Si un NAT estricto lo impide, pasan por un relevo TURN de PeerJS.
+- **Demora:** el jugador 2 ve la imagen y envía sus controles con la latencia de la conexión. Ese valor aparece en su pantalla. El jugador 1 juega sin demora.
+- **Pestaña visible:** mantené visible la pestaña del juego, porque el navegador frena las pestañas ocultas.
+- **Página del invitado:** el enlace apunta a `https://luckohub.github.io/rockandrolla/`. Esa página no contiene el motor ni la ROM, solo la interfaz para unirse. Para activarla una vez, andá en GitHub a **Settings → Pages → Source: GitHub Actions**. El flujo `.github/workflows/pages.yml` la publica en cada cambio.
+- **Prueba en un solo equipo:** el enlace «Probar como invitado en este equipo» abre la misma sala en otra pestaña o navegador.
+
 ## Estructura
 
 | Carpeta | Contenido |
@@ -94,11 +119,14 @@ Los dos juegos de teclas reproducen los perfiles "clásico" y "predeterminado" d
 | `third_party/rnrr-recomp/` | Submódulo con la recompilación original, fijado en `4f4a9a6`. **No se modifica** |
 | `port/shim/` | Sustitutos de `windows.h` y `bcrypt.h` con un SHA-256 portable. Es la única dependencia de Windows que había en el núcleo |
 | `port/src/fast_snprintf.c`, `port/src/apu_sync_batch.c` | Optimizaciones del port que no cambian el resultado (ver informe, sección 8) |
+| `port/src/controller_p2.c` | Conecta el mando 2 del SNES, que el lanzador original dejaba fijo en cero |
 | `port/src/rnr_web.c` | API `rnrw_*` que el JavaScript usa para crear el juego, avanzar frames, leer imagen y audio, manejar la entrada y las instantáneas |
 | `port/tests/`, `port/tools/` | Pruebas propias y una herramienta de rendimiento que usa tu ROM en Node |
 | `port/Makefile` | Compilación con Emscripten |
 | `web/` | El sitio estático: `index.html`, `style.css`, `app.js`, `audio-worklet.js`, `engine/` (generado) y `legal/` |
-| `scripts/` | `build.ps1`, `serve.ps1` y `serve.mjs`, y `browser-test.mjs` para la prueba automática con Chrome o Edge |
+| `web/keymap.js`, `web/keys-ui.js` | Teclas configurables y su ventana |
+| `web/net.js`, `web/guest.js`, `web/config.js`, `web/vendor/` | Juego online: sesiones de anfitrión e invitado, ajustes de red y PeerJS 1.5.5 |
+| `scripts/` | `build.ps1`, `serve.ps1` y `serve.mjs`. También `browser-test.mjs`, para la prueba automática con Chrome o Edge, y `online-test.mjs`, para el juego online y el remapeo |
 | `docs/` | Informe de viabilidad, dependencias, pruebas y despliegue |
 
 ## Pruebas
@@ -117,6 +145,9 @@ node scripts\browser-test.mjs --browser chrome --rom "C:\ruta\a\Rock n' Roll Rac
 
 # Con la ROM en rom\: comprueba el arranque directo sin clics
 node scripts\browser-test.mjs --browser chrome --local-rom
+
+# Con la ROM en rom\ e internet: juego online de punta a punta y remapeo
+node scripts\online-test.mjs --browser chrome
 
 # Rendimiento del motor wasm en Node, con tu ROM
 powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Bench

@@ -32,7 +32,7 @@ Es un sitio 100 % estático: no hay backend, base de datos ni subida de archivos
 | Caché | `engine/*`: `Cache-Control: public, max-age=0, must-revalidate` con ETag, porque los nombres no llevan hash. Si se agrega un hash al nombre, se puede usar `max-age=31536000, immutable` |
 | CORS | No hace falta: todo se sirve desde el mismo origen |
 | COOP/COEP | **No hacen falta**: no se usan hilos ni `SharedArrayBuffer` |
-| CSP | `default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'`. Probada en Chrome y Edge |
+| CSP | `default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://0.peerjs.com wss://0.peerjs.com; media-src 'self' blob: mediastream:; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'`. Probada en Chrome y Edge |
 
 ## 3. Opciones de hosting
 
@@ -60,7 +60,7 @@ server {
 
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy no-referrer always;
-    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://0.peerjs.com wss://0.peerjs.com; media-src 'self' blob: mediastream:; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'" always;
 
     location /engine/ { add_header Cache-Control "public, max-age=0, must-revalidate" always; }
 }
@@ -77,7 +77,7 @@ AddType application/wasm .wasm
 <IfModule mod_headers.c>
   Header always set X-Content-Type-Options "nosniff"
   Header always set Referrer-Policy "no-referrer"
-  Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'"
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://0.peerjs.com wss://0.peerjs.com; media-src 'self' blob: mediastream:; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'"
   <FilesMatch "^rockanrola\.(js|wasm)$">
     Header set Cache-Control "public, max-age=0, must-revalidate"
   </FilesMatch>

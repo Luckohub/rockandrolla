@@ -127,6 +127,23 @@ Navegador
 - **Sincronía:** el reloj del juego avanza por tiempo real y se ajusta hasta ±1 % según el audio en cola, así se evitan cortes y deriva.
 - **Pausa automática:** al ocultar la pestaña.
 
+### Juego online
+
+Elegí la **transmisión desde el anfitrión**, el mismo esquema de «Remote Play Together».
+
+1. El anfitrión ejecuta el juego con su ROM.
+2. Envía la imagen, escalada 2× sin suavizado, y el sonido por WebRTC.
+3. Recibe por un canal de datos los controles del invitado, que manejan el mando 2 del SNES.
+
+La alternativa era la ejecución sincronizada en ambos equipos, enviando solo las entradas. Tendría menos demora para el jugador 2, pero obligaría al invitado a tener el motor y su propia ROM. El motor no se puede publicar (sección 6), así que esa vía no permite compartir un enlace.
+
+- **Qué recibe el invitado:** solo una página con la interfaz y PeerJS, sin código del juego ni ROM. Esa página sí se puede publicar, por ejemplo en GitHub Pages.
+- **Qué hace el anfitrión:** muestra su partida en vivo a una persona invitada, como al compartir pantalla.
+- **Mando 2:** se habilita redirigiendo con `-D` una sola llamada de `rnr_app_core.c`, sin editar el original.
+- **Coordinación:** el servidor gratuito de PeerJS presenta a los navegadores. Sus relevos TURN cubren redes con NAT estricto.
+- **Medido en un solo equipo:** 60 cuadros/s recibidos sin pérdidas, con 10–30 ms de búfer y alrededor de 1 Mbit/s.
+- **Falta medir:** la latencia real entre dos casas.
+
 ### Optimizaciones del port
 
 La primera medición con la ROM dio 35 fps en WebAssembly, insuficiente. El perfil mostró dos costos ajenos al juego. Ambos se resolvieron sin editar el código original.

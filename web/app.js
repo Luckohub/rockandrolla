@@ -12,21 +12,17 @@ const SNAPSHOT_PATH = '/rockanrola-snapshot.bin';
 const AUDIO_TARGET_FRAMES = 2400;   // ~75 ms of 32,040 Hz audio in the worklet
 const MAX_FRAMES_PER_TICK = 4;
 
-const BTN = {
-  B: 0x8000, Y: 0x4000, SELECT: 0x2000, START: 0x1000,
-  UP: 0x0800, DOWN: 0x0400, LEFT: 0x0200, RIGHT: 0x0100,
-  A: 0x0080, X: 0x0040, L: 0x0020, R: 0x0010,
-};
+import { buildLookup, loadKeymap, loadLayoutLabels, readGamepads } from './keymap.js';
+import { createKeysUI } from './keys-ui.js';
+import { HostSession, inviteLink, normalizeCode } from './net.js';
+import { createGuest } from './guest.js';
+import { NET } from './config.js';
 
-// Both upstream keyboard profiles ("classic" and "default") at once; they
-// do not overlap. event.code keeps it independent of the keyboard layout.
-const KEYMAP = {
-  ArrowUp: BTN.UP, ArrowDown: BTN.DOWN, ArrowLeft: BTN.LEFT, ArrowRight: BTN.RIGHT,
-  KeyZ: BTN.B, KeyD: BTN.B, KeyX: BTN.A, KeyF: BTN.A,
-  KeyA: BTN.Y, KeyS: BTN.X, KeyE: BTN.L, KeyR: BTN.R,
-  Enter: BTN.START, NumpadEnter: BTN.START, KeyG: BTN.START,
-  Space: BTN.SELECT, KeyT: BTN.SELECT,
-};
+// Keyboard mapping: configurable, stored per browser (see keymap.js).
+let keymap = loadKeymap();
+let keyLookup = buildLookup(keymap);
+let keysUI = null;   // created in init()
+let guest = null;    // guest (player 2) screen controller
 
 const $ = (id) => document.getElementById(id);
 
@@ -48,6 +44,10 @@ const state = {
   audio: { ctx: null, node: null, gain: null, ready: false, level: 0, underruns: 0, warned: false },
   stats: { frames: 0, cost: 0, samples: 0, since: 0 },
   romWaiter: null,
+  host: null,          // HostSession while a room is open
+  p2pad: 0,            // guest gamepad state (SNES controller 2)
+  stream: null,        // { canvas, ctx } scaled copy sent to the guest
+  pausedByDialog: false,
 };
 
 // ------------------------------------------------------------ small helpers
@@ -167,6 +167,10 @@ async function fetchWithProgress(url, onProgress) {
   let res;
   try { res = await fetch(url); }
   catch (e) { throw new StartError('No se pudo descargar el motor. Revisá la conexión o el servidor.', `${url}: ${e.message}`); }
+  if (res.status === 404 && !['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)) {
+    throw new StartError('Esta página pública no incluye el motor del juego, así que acá solo podés unirte a una partida online con el código que te pasaron.',
+      'Para jugar como anfitrión, ejecutá Rockanrola en tu equipo (ver README) y abrí http://localhost.');
+  }
   if (!res.ok) {
     throw new StartError(`El servidor respondió ${res.status} al pedir el motor.`,
       `${url}\nSi estás en desarrollo, compilá primero con scripts\\build.ps1 (ver README).`);
@@ -256,9 +260,12 @@ function pumpAudio() {
 }
 
 // ------------------------------------------------------------------- video
+const CSS_FIT = typeof CSS !== 'undefined' && CSS.supports && CSS.supports('width', '1cqw');
 function layoutCanvas() {
   const frame = $('marco');
   const canvas = $('pantalla');
+  frame.dataset.aspect = state.aspect;
+  if (CSS_FIT) return; // style.css fits the picture; JS sizing is only a fallback
   const w = frame.clientWidth, h = frame.clientHeight;
   if (!w || !h) return;
   const ar = state.aspect === '4:3' ? 4 / 3 : 256 / 224;
@@ -273,42 +280,29 @@ function draw() {
   const ptr = mod._rnrw_frame_rgba();
   state.image.data.set(mod.HEAPU8.subarray(ptr, ptr + 256 * 224 * 4));
   state.ctx2d.putImageData(state.image, 0, 0);
+  if (state.stream) {
+    const st = state.stream;
+    st.ctx.drawImage(state.ctx2d.canvas, 0, 0, st.canvas.width, st.canvas.height);
+    // Explicit capture: exactly one video frame per game frame drawn.
+    for (const t of st.tracks) { if (t.readyState === 'live') t.requestFrame(); else st.tracks.delete(t); }
+  }
 }
 
 // ------------------------------------------------------------------- input
-function pollGamepads() {
-  if (!navigator.getGamepads) return 0;
-  let mask = 0;
-  let pads;
-  try { pads = navigator.getGamepads(); } catch { return 0; }
-  for (const gp of pads) {
-    if (!gp || !gp.connected) continue;
-    const b = (i) => !!(gp.buttons[i] && gp.buttons[i].pressed);
-    if (b(0)) mask |= BTN.B;
-    if (b(1)) mask |= BTN.A;
-    if (b(2)) mask |= BTN.Y;
-    if (b(3)) mask |= BTN.X;
-    if (b(4) || b(6)) mask |= BTN.L;
-    if (b(5) || b(7)) mask |= BTN.R;
-    if (b(8)) mask |= BTN.SELECT;
-    if (b(9)) mask |= BTN.START;
-    if (b(12)) mask |= BTN.UP;
-    if (b(13)) mask |= BTN.DOWN;
-    if (b(14)) mask |= BTN.LEFT;
-    if (b(15)) mask |= BTN.RIGHT;
-    const x = gp.axes[0] || 0, y = gp.axes[1] || 0;
-    if (x < -0.5) mask |= BTN.LEFT; else if (x > 0.5) mask |= BTN.RIGHT;
-    if (y < -0.5) mask |= BTN.UP; else if (y > 0.5) mask |= BTN.DOWN;
-  }
-  return mask;
-}
-
 function gameVisible() { return !$('juego').hidden; }
 
 window.addEventListener('keydown', (e) => {
-  if (!gameVisible() || !state.loaded) return;
+  if (!gameVisible() || !state.loaded || anyDialogOpen()) return;
   if (e.altKey || e.ctrlKey || e.metaKey) return;
   if (state.audio.ctx && state.audio.ctx.state === 'suspended' && !state.paused) state.audio.ctx.resume().catch(() => {});
+  // Game buttons first, so any key (even P) can be assigned to a button.
+  const mask = keyLookup.get(e.code);
+  if (mask) {
+    e.preventDefault();
+    if (document.activeElement && document.activeElement.tagName === 'BUTTON') document.activeElement.blur();
+    state.mod._rnrw_press(mask, e.repeat ? 1 : 0);
+    return;
+  }
   if (e.code === 'KeyP' || e.code === 'Escape') {
     if (e.code === 'Escape' && document.fullscreenElement) return; // the browser exits fullscreen
     if (!e.repeat) togglePause();
@@ -316,18 +310,13 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (e.code === 'F2') { e.preventDefault(); if (!e.repeat) saveSnapshot(); return; }
-  if (e.code === 'F4') { e.preventDefault(); if (!e.repeat) loadSnapshot(); return; }
-  const mask = KEYMAP[e.code];
-  if (mask) {
-    e.preventDefault();
-    if (document.activeElement && document.activeElement.tagName === 'BUTTON') document.activeElement.blur();
-    state.mod._rnrw_press(mask, e.repeat ? 1 : 0);
-  }
+  if (e.code === 'F4') { e.preventDefault(); if (!e.repeat) loadSnapshot(); }
 });
 window.addEventListener('keyup', (e) => {
-  const mask = KEYMAP[e.code];
+  const mask = keyLookup.get(e.code);
   if (mask && state.loaded) { e.preventDefault(); state.mod._rnrw_release(mask); }
 });
+function anyDialogOpen() { return !!document.querySelector('dialog[open]'); }
 window.addEventListener('blur', () => { if (state.loaded) state.mod._rnrw_release_all(); });
 window.addEventListener('gamepadconnected', (e) => toast(`Mando conectado: ${e.gamepad.id}`));
 window.addEventListener('gamepaddisconnected', () => toast('Mando desconectado'));
@@ -355,16 +344,18 @@ function tick(t) {
 
   const mod = state.mod;
   const t0 = performance.now();
-  const ok = mod._rnrw_run_frames(n, pollGamepads());
+  const ok = mod._rnrw_run_frames(n, readGamepads(), state.p2pad);
   const cost = performance.now() - t0;
   if (!ok) { coreStopped(mod.UTF8ToString(mod._rnrw_last_error())); return; }
   draw();
   pumpAudio();
 
   const s = state.stats;
-  s.frames += n; s.cost += cost;
+  s.frames += n; s.cost += cost; s.draws = (s.draws || 0) + 1;
   if (t - s.since > 1000) {
     const secs = (t - s.since) / 1000;
+    s.drawRate = s.draws / secs;
+    s.draws = 0;
     const ms = state.audio.ready ? Math.round((state.audio.level / 32040) * 1000) : null;
     $('hud').textContent =
       `${(s.frames / secs).toFixed(1)} fps · ${(s.cost / Math.max(1, s.frames)).toFixed(2)} ms/frame de CPU` +
@@ -396,6 +387,7 @@ function setPaused(paused) {
   const ctx = state.audio.ctx;
   if (ctx) (paused ? ctx.suspend() : ctx.resume()).catch(() => {});
   if (!paused) state.last = performance.now();
+  if (state.host) state.host.sendState({ paused });
 }
 function togglePause() { if (!state.failed) setPaused(!state.paused); }
 
@@ -411,6 +403,7 @@ function coreStopped(message) {
     'La recompilación llegó a un estado que no fue compilado de antemano y se detuvo ' +
     `para no ejecutar código incorrecto. Detalle técnico: ${message}`;
   $('capa-error').hidden = false;
+  if (state.host) state.host.sendState({ failed: true });
   console.error('[rockanrola] static core stop:', message);
 }
 
@@ -513,10 +506,10 @@ async function expandRom(rom) {
 // rom/ folder at /local-rom (127.0.0.1 only). Static hosts have no such
 // route, so there this returns null and the normal ROM picker is used.
 async function fetchLocalRom() {
-  if (location.protocol === 'file:') return null;
+  if (!['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)) return null;
   try {
     const res = await fetch('local-rom', { cache: 'no-store' });
-    if (!res.ok) return null;
+    if (res.status !== 200) return null;
     const name = decodeURIComponent(res.headers.get('X-Rom-Name') || 'rom.sfc');
     return { bytes: new Uint8Array(await res.arrayBuffer()), name, local: true };
   } catch { return null; }
@@ -716,6 +709,106 @@ async function start() {
   }
 }
 
+// ---------------------------------------------------------- online (host)
+// The host keeps running the game locally; the guest gets a 2x scaled copy
+// of the picture plus the game audio, and sends controller 2 events back.
+function hostStream() {
+  if (!state.stream) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256 * NET.streamScale;
+    canvas.height = 224 * NET.streamScale;
+    const ctx = canvas.getContext('2d', { alpha: false });
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(state.ctx2d.canvas, 0, 0, canvas.width, canvas.height);
+    state.stream = { canvas, ctx, tracks: new Set() };
+  }
+  // captureStream(0) + requestFrame() in draw(): the browser never skips or
+  // duplicates frames on its own schedule.
+  const stream = state.stream.canvas.captureStream(0);
+  for (const t of stream.getVideoTracks()) {
+    try { t.contentHint = 'motion'; } catch { /* optional */ }
+    if (typeof t.requestFrame === 'function') state.stream.tracks.add(t);
+  }
+  const a = state.audio;
+  if (a.ready && a.node) {
+    if (!a.dest) { a.dest = a.ctx.createMediaStreamDestination(); a.node.connect(a.dest); }
+    for (const t of a.dest.stream.getAudioTracks()) stream.addTrack(t);
+  }
+  return stream;
+}
+
+function onlineStatus(kind, value) {
+  const hud = $('hud-online');
+  if (kind === 'rtt') {
+    if (state.host && state.host.connected) hud.textContent = `Jugador 2 conectado · latencia ida y vuelta ${Math.round(value)} ms`;
+    return;
+  }
+  $('online-estado').textContent = value;
+  if (kind === 'error') toast(value, 6000);
+  if (kind === 'guest' || kind === 'waiting') {
+    hud.hidden = false;
+    hud.textContent = kind === 'guest' ? 'Jugador 2 conectado' : `Sala ${state.host?.code || ''} abierta · esperando al jugador 2`;
+  }
+}
+
+function onGuestInput(ev) {
+  const mod = state.mod;
+  if (!mod || !state.loaded) return;
+  switch (ev.type) {
+    case 'down': mod._rnrw_p2_press(ev.mask, ev.repeat ? 1 : 0); break;
+    case 'up': mod._rnrw_p2_release(ev.mask); break;
+    case 'pad': state.p2pad = ev.mask; break;
+    case 'releaseAll': mod._rnrw_p2_release_all(); state.p2pad = 0; break;
+    case 'pause': togglePause(); toast(state.paused ? 'El jugador 2 pausó la partida' : 'El jugador 2 reanudó la partida'); break;
+    default: break;
+  }
+}
+
+function onGuestChange(connected) {
+  if (connected) { toast('¡Jugador 2 conectado!'); return; }
+  state.p2pad = 0;
+  if (state.mod && state.loaded) state.mod._rnrw_p2_release_all();
+  toast('El jugador 2 se desconectó');
+}
+
+async function openOnline() {
+  const dlg = $('dlg-online');
+  if (!dlg.open) dlg.showModal();
+  if (state.host && state.host.code) return;
+  $('online-invitacion').hidden = true;
+  $('btn-online-cerrar-sala').hidden = true;
+  $('online-estado').textContent = 'Abriendo una sala…';
+  const host = new HostSession({ getStream: hostStream, onStatus: onlineStatus, onInput: onGuestInput, onGuest: onGuestChange });
+  state.host = host;
+  try {
+    const code = await host.open();
+    if (state.host !== host) { host.close(); return; }
+    host.sendState({ paused: state.paused, failed: state.failed });
+    $('online-codigo').textContent = code;
+    $('online-enlace').value = inviteLink(code);
+    $('online-local').href = inviteLink(code, location.href);
+    $('online-invitacion').hidden = false;
+    $('btn-online-cerrar-sala').hidden = false;
+    onlineStatus('waiting', 'Sala abierta. Esperando al jugador 2…');
+    $('btn-online').textContent = `Online · ${code}`;
+  } catch (e) {
+    state.host = null;
+    $('online-estado').textContent = `No se pudo abrir la sala: ${e.message}`;
+  }
+}
+
+function closeOnline() {
+  if (state.host) state.host.close();
+  state.host = null;
+  state.p2pad = 0;
+  if (state.mod && state.loaded) state.mod._rnrw_p2_release_all();
+  $('hud-online').hidden = true;
+  $('online-invitacion').hidden = true;
+  $('btn-online-cerrar-sala').hidden = true;
+  $('online-estado').textContent = 'Sala cerrada.';
+  $('btn-online').textContent = 'Jugar online';
+}
+
 // ------------------------------------------------------------------- wiring
 function init() {
   const canvas = $('pantalla');
@@ -783,6 +876,49 @@ function init() {
     await kvDel('rom');
     start();
   });
+  keysUI = createKeysUI({
+    getMap: () => keymap,
+    setMap: (m) => { keymap = m; keyLookup = buildLookup(m); if (state.loaded) state.mod._rnrw_release_all(); },
+    onOpen: () => {
+      if (gameVisible() && state.loaded && !state.paused && !state.failed) { state.pausedByDialog = true; setPaused(true); }
+    },
+    onClose: () => { if (state.pausedByDialog) { state.pausedByDialog = false; setPaused(false); } },
+  });
+  loadLayoutLabels().then(() => keysUI.renderSummary());
+
+  guest = createGuest({
+    show, toast, keysUI,
+    getLookup: () => keyLookup,
+    onLeave: () => { history.replaceState(null, '', location.pathname); show('portada'); },
+  });
+  $('btn-online').addEventListener('click', openOnline);
+  $('btn-online-listo').addEventListener('click', () => $('dlg-online').close());
+  $('btn-online-cerrar-sala').addEventListener('click', closeOnline);
+  $('btn-copiar-enlace').addEventListener('click', async () => {
+    const link = $('online-enlace').value;
+    try { await navigator.clipboard.writeText(link); toast('Enlace copiado: mandáselo al jugador 2'); }
+    catch { $('online-enlace').select(); toast('Copiá el enlace seleccionado con Ctrl+C'); }
+  });
+  $('form-unirse').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const code = normalizeCode($('input-sala').value);
+    const err = $('error-sala');
+    if (code.length < 4) { err.hidden = false; err.textContent = 'Pegá el enlace completo o el código de 6 letras que te pasaron.'; return; }
+    err.hidden = true;
+    history.pushState(null, '', `?sala=${code}`);
+    guest.open(code);
+  });
+
+  // Small read-only hook for scripts/online-test.mjs and troubleshooting.
+  window.__rockanrola = Object.freeze({
+    p2Mask: () => (state.mod && state.loaded ? state.mod._rnrw_p2_last_mask() : 0),
+    roomCode: () => (state.host ? state.host.code : null),
+    guestConnected: () => !!(state.host && state.host.connected),
+    hostVideoStats: () => (state.host ? state.host.stats() : null),
+    drawsPerSecond: () => state.stats.drawRate || 0,
+    guestVideoStats: () => guest.stats(),
+  });
+
   if ('ResizeObserver' in window) new ResizeObserver(layoutCanvas).observe($('marco'));
   else window.addEventListener('resize', layoutCanvas);
 
@@ -817,4 +953,8 @@ async function autostart() {
 }
 
 init();
-autostart();
+// An invitation link (?sala=CODE) opens the guest screen; it never loads the
+// engine or a ROM. Otherwise try the local ROM auto-start.
+const invitedRoom = new URLSearchParams(location.search).get('sala');
+if (invitedRoom) guest.open(invitedRoom);
+else autostart();

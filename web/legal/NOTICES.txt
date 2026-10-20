@@ -18,10 +18,21 @@ partir de las siguientes fuentes.
    Uso permitido solo con fines no comerciales. Texto completo en
    SNES9X-LICENSE.txt, en esta misma carpeta.
 
-3. Código propio de Rockanrola (port/, web/, scripts/)
+3. PeerJS 1.5.5 (web/vendor/peerjs-1.5.5.min.js), solo para jugar online
+   Copyright (c) 2015 Michelle Bu and Eric Zhang. Licencia MIT, texto en
+   web/vendor/PEERJS-LICENSE.txt. El archivo minificado incluye:
+   - eventemitter3 (MIT)
+   - webrtc-adapter (BSD-3-Clause, Copyright The WebRTC project authors)
+   - @msgpack/msgpack (ISC)
+   - peerjs-js-binarypack (MIT)
+   Paquete npm verificado por integridad SHA-512 con el registro.
+   El servicio público de conexión 0.peerjs.com y sus relevos TURN son
+   operados por el proyecto PeerJS.
+
+4. Código propio de Rockanrola (port/, web/, scripts/)
    Licencia zlib. Ver LICENSE en el repositorio.
 
-4. Emscripten 6.0.10 (bibliotecas de sistema enlazadas: musl libc,
+5. Emscripten 6.0.10 (bibliotecas de sistema enlazadas: musl libc,
    libc++, libc++abi, compiler-rt)
    Licencias MIT / University of Illinois NCSA / Apache-2.0 con excepción
    LLVM, según https://github.com/emscripten-core/emscripten/blob/main/LICENSE

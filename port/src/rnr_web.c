@@ -24,6 +24,9 @@
 
 static RockNRollRacingRecomp *g_game;
 static RockNRollRacingInputLatch g_latch;
+static RockNRollRacingInputLatch g_latch_p2; /* online/second player */
+
+void rockanrola_set_player2_state(uint16_t state); /* controller_p2.c */
 static uint8_t g_rgba[RNRW_PIXELS * 4u];
 static int16_t g_audio[RNRW_AUDIO_CAPACITY * RNR_RECOMP_AUDIO_CHANNELS];
 static char g_error[768];
@@ -44,7 +47,7 @@ static uint16_t opposite_of(uint16_t mask) {
 
 /* Builds and returns a static string; used by the page for diagnostics. */
 EMSCRIPTEN_KEEPALIVE const char *rnrw_version(void) {
-    return "Rockanrola web glue 0.1.0 / Rock n' Roll Racing SNES static recomp 1.0.0";
+    return "Rockanrola web glue 0.2.0 / Rock n' Roll Racing SNES static recomp 1.0.0";
 }
 
 EMSCRIPTEN_KEEPALIVE const char *rnrw_last_error(void) {
@@ -83,6 +86,8 @@ EMSCRIPTEN_KEEPALIVE int rnrw_create(const uint8_t *rom, int size) {
         g_game = NULL;
     }
     rnr_input_latch_reset(&g_latch);
+    rnr_input_latch_reset(&g_latch_p2);
+    rockanrola_set_player2_state(0u);
     g_frames_run = 0u;
     if (!rom || size <= 0) {
         set_error("No ROM data was provided.");
@@ -110,6 +115,8 @@ EMSCRIPTEN_KEEPALIVE int rnrw_reset(void) {
     char error[512] = {0};
     if (!g_game) { set_error("The game is not loaded."); return 0; }
     rnr_input_latch_reset(&g_latch);
+    rnr_input_latch_reset(&g_latch_p2);
+    rockanrola_set_player2_state(0u);
     if (!rnr_recomp_reset(g_game, error, sizeof(error))) {
         set_error(error);
         return 0;
@@ -132,6 +139,24 @@ EMSCRIPTEN_KEEPALIVE void rnrw_release_all(void) {
     rnr_input_latch_reset(&g_latch);
 }
 
+/* Player 2 (controller port 1), fed by the online guest. */
+EMSCRIPTEN_KEEPALIVE void rnrw_p2_press(int mask, int repeated) {
+    uint16_t m = (uint16_t)mask;
+    rnr_input_latch_press(&g_latch_p2, m, opposite_of(m), repeated);
+}
+
+EMSCRIPTEN_KEEPALIVE void rnrw_p2_release(int mask) {
+    rnr_input_latch_release(&g_latch_p2, (uint16_t)mask);
+}
+
+EMSCRIPTEN_KEEPALIVE void rnrw_p2_release_all(void) {
+    rnr_input_latch_reset(&g_latch_p2);
+    rockanrola_set_player2_state(0u);
+}
+
+static uint16_t g_last_p2_mask;
+EMSCRIPTEN_KEEPALIVE int rnrw_p2_last_mask(void) { return (int)g_last_p2_mask; }
+
 static void publish_rgba(void) {
     const uint32_t *bgra = rnr_recomp_frame_bgra(g_game);
     size_t i;
@@ -147,9 +172,9 @@ static void publish_rgba(void) {
 
 /* Runs `count` complete video frames with the current controller state and
    publishes the last one as RGBA. Extra pad state (e.g. from a gamepad
-   polled by JavaScript) is OR-ed into the keyboard latch. Returns 1 on
+   polled by JavaScript) is OR-ed into each player's latch. Returns 1 on
    success and 0 when the static core stopped fail-closed. */
-EMSCRIPTEN_KEEPALIVE int rnrw_run_frames(int count, int extra_mask) {
+EMSCRIPTEN_KEEPALIVE int rnrw_run_frames(int count, int extra_mask, int extra_mask_p2) {
     RockNRollRacingRecompFrameResult result;
     int i;
     if (!g_game) { set_error("The game is not loaded."); return 0; }
@@ -160,7 +185,10 @@ EMSCRIPTEN_KEEPALIVE int rnrw_run_frames(int count, int extra_mask) {
     for (i = 0; i < count; ++i) {
         uint16_t sampled = rnr_input_latch_sample(&g_latch);
         uint16_t mask = (uint16_t)(sampled | (uint16_t)extra_mask);
+        uint16_t sampled_p2 = rnr_input_latch_sample(&g_latch_p2);
         int last = (i == count - 1);
+        g_last_p2_mask = (uint16_t)(sampled_p2 | (uint16_t)extra_mask_p2);
+        rockanrola_set_player2_state(g_last_p2_mask);
         int ok = last ? rnr_recomp_advance(g_game, mask, 1u, &result)
                       : rnr_recomp_advance_headless(g_game, mask, 1u, &result);
         if (!ok) {
@@ -168,6 +196,7 @@ EMSCRIPTEN_KEEPALIVE int rnrw_run_frames(int count, int extra_mask) {
             return 0;
         }
         rnr_input_latch_consume(&g_latch, sampled);
+        rnr_input_latch_consume(&g_latch_p2, sampled_p2);
         g_frames_run++;
     }
     publish_rgba();
@@ -226,5 +255,7 @@ EMSCRIPTEN_KEEPALIVE int rnrw_snapshot_load(const char *path) {
         return 0;
     }
     rnr_input_latch_reset(&g_latch);
+    rnr_input_latch_reset(&g_latch_p2);
+    rockanrola_set_player2_state(0u);
     return 1;
 }

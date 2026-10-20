@@ -55,6 +55,8 @@ const profile = mkdtempSync(join(tmpdir(), 'rockanrola-cdp-'));
 const browser = spawn(exe, [
   '--headless=new', `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profile}`,
   '--no-first-run', '--no-default-browser-check', '--autoplay-policy=no-user-gesture-required',
+  // Automation: do not throttle windows the OS reports as hidden/occluded.
+  '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling',
   '--window-size=1280,900', 'about:blank',
 ], { stdio: 'ignore' });
 
@@ -143,6 +145,20 @@ async function gameChecks() {
     for (let i = 0; i < 4; i++) { await tap('KeyZ', 'z', 600); await tap('ArrowRight', 'ArrowRight', 300); }
     await sleep(3000);
     await screenshot('6-tras-controles');
+    // Fullscreen: the whole 4:3 picture must fit the screen, centred.
+    await evaluate(`document.getElementById('btn-completa').click()`, true);
+    await sleep(1200);
+    const fs = await evaluate(`(() => { const c = document.getElementById('pantalla').getBoundingClientRect();
+      const f = document.getElementById('marco').getBoundingClientRect();
+      return { full: !!document.fullscreenElement, c: [c.left, c.top, c.width, c.height], f: [f.left, f.top, f.width, f.height], vw: innerWidth, vh: innerHeight }; })()`);
+    await screenshot('5b-pantalla-completa');
+    const [cl, ct, cw, ch] = fs.c;
+    const fits = fs.full && cl >= -1 && ct >= -1 && cl + cw <= fs.vw + 1 && ct + ch <= fs.vh + 1 &&
+      Math.abs(cw / ch - 4 / 3) < 0.02 && (Math.abs(cw - fs.vw) < 2 || Math.abs(ch - fs.vh) < 2);
+    check('pantalla completa muestra la imagen entera', fits,
+      `lienzo ${cw.toFixed(0)}x${ch.toFixed(0)} en (${cl.toFixed(0)},${ct.toFixed(0)}), marco ${fs.f[2].toFixed(0)}x${fs.f[3].toFixed(0)}, ventana ${fs.vw}x${fs.vh}, fullscreen=${fs.full}`);
+    await evaluate(`document.exitFullscreen && document.fullscreenElement ? document.exitFullscreen() : null`, true);
+    await sleep(600);
     const autoPaused = await evaluate(visible('capa-pausa'));
     check('sin pausa automática inesperada', !autoPaused);
     if (autoPaused) await evaluate(`document.getElementById('btn-pausa').click()`, true);
@@ -246,7 +262,8 @@ try {
     const n = 16020, f = new Float32Array(n * 2);
     for (let i = 0; i < n; i++) f[i * 2] = f[i * 2 + 1] = 0.1 * Math.sin(2 * Math.PI * 440 * i / 32040);
     node.port.postMessage({ type: 'pcm', samples: f }, [f.buffer]);
-    await new Promise((r) => setTimeout(r, 300));
+    // Opening the Windows audio device can take a moment: wait for reports.
+    for (let i = 0; i < 30 && levels.length < 4; i++) await new Promise((r) => setTimeout(r, 100));
     const rate = ctx.sampleRate;
     await ctx.close();
     return { rate, levels };

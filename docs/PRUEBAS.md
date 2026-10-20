@@ -59,15 +59,40 @@ ROM verificada: Rock n' Roll Racing (USA), SHA-256 `9d721753…4b182`, aportada 
 
 `node scripts\browser-test.mjs --local-rom` superó 11/11 comprobaciones en Chrome y 12/12 en Edge. La de Edge incluye además la comprobación de pausa automática.
 
+### Teclas, pantalla completa y juego online
+
+| Prueba | Resultado |
+|---|---|
+| Pantalla completa con el juego real | La imagen 4:3 entra completa y centrada: lienzo de 1073×805 en una ventana de 1264×805. Ahora el ajuste se resuelve solo con CSS |
+| Mando 2 en el hardware, con `rnr_p2_check.js` | El estado del jugador 2 llega a los registros `$421A/$421B` que lee el juego, sin afectar al jugador 1 |
+| `node scripts\online-test.mjs`, dos ventanas del mismo navegador | 23/23 en Chrome y 23/23 en Edge |
+
+`online-test.mjs` verifica lo siguiente:
+
+- El anfitrión abre una sala en 0.peerjs.com.
+- El invitado no descarga el motor ni la ROM.
+- El video de 512×448 llega en unos 3 s, sin avisos encima y con pista de audio.
+- WebRTC entrega al invitado cada cuadro que dibuja el anfitrión, a 55–60 por segundo, sin pérdidas y con 10–30 ms de búfer.
+- Las teclas del invitado llegan como mando 2: Derecha da la máscara `0x100` y se libera al soltar.
+- Se muestra la latencia de ida y vuelta.
+- La pausa desde el invitado llega a ambas pantallas, y la salida del invitado se detecta.
+- El remapeo de B a Q se aplica y se guarda, y se puede restaurar.
+- Abrir y cerrar la ventana «Teclas» pausa y reanuda el juego.
+- No hay errores de consola ni solicitudes fallidas en ninguna de las dos páginas.
+
+Limitación de la prueba: corre en un solo equipo, sin una red real entre medio. Falta probar con tu hermano en otra conexión.
+
 ## Pendientes
 
 | Prueba | Motivo |
 |---|---|
+| Juego online entre dos casas, con redes y NAT reales | Prueba manual |
+| Carrera a dos jugadores de punta a punta | Prueba manual |
 | Carrera completa, armas, turbo, compras y contraseñas | Prueba manual |
 | Calidad del audio a oído y cortes en Edge | Prueba manual |
 | Botón Reiniciar y persistencia de instantáneas tras recargar | Prueba manual |
 | Mandos físicos | No hay un mando conectado durante la sesión |
-| Pantalla completa | La prueba sin interfaz no la cubre; queda para verificación manual. El cambio de tamaño sí se probó con el área vacía |
+| Pantalla completa en el monitor real del usuario | La prueba automática pasa; falta confirmar a mano que se corrigió el recorte |
 | Firefox | No está instalado en el equipo |
 | Safari y móviles | No disponibles. Además faltan controles táctiles |
 

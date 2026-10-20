@@ -53,7 +53,7 @@ to_obj = $(patsubst $(ROOT)/%,$(OBJ)/%.o,$(1))
 CORE_OBJS := $(call to_obj,$(CORE_STRICT_C) $(CORE_GEN_C) $(CORE_LOOSE_C) \
                            $(CORE_STRICT_CXX) $(CORE_LOOSE_CXX)) \
              $(OBJ)/port/src/fast_snprintf.c.o              $(OBJ)/port/src/apu_sync_batch.c.o
-FRONT_OBJS := $(call to_obj,$(FRONT_C))
+FRONT_OBJS := $(call to_obj,$(FRONT_C)) $(OBJ)/port/src/controller_p2.c.o
 PORT_OBJS  := $(patsubst %,$(OBJ)/port/%.o,$(PORT_C))
 
 # Generated S-CPU shards are compiled the same way upstream does (default
@@ -98,6 +98,11 @@ ifeq ($(APU_BATCH),1)
 $(OBJ)/third_party/rnrr-recomp/runtime/v10_2_machine.c.o: CFLAGS +=   -Djs_v10_2_apu_sync=rockanrola_apu_sync   -Djs_v10_2_apu_cpu_read=rockanrola_apu_cpu_read   -Djs_v10_2_apu_cpu_write=rockanrola_apu_cpu_write
 endif
 $(OBJ)/third_party/rnrr-recomp/runtime/v10_2_machine.c.o: Makefile
+
+# Player 2 (see port/src/controller_p2.c): rnr_app_core.c drives controller
+# port 1 with a constant 0; redirect that single call in this unit only.
+$(OBJ)/third_party/rnrr-recomp/frontend/windows/rnr_app_core.c.o: CFLAGS +=   -Djs_v10_2_set_controller_state=rockanrola_set_controller_state
+$(OBJ)/third_party/rnrr-recomp/frontend/windows/rnr_app_core.c.o: Makefile
 
 # ---------------------------------------------------------------- web module
 WEB_LDFLAGS := $(OPT) -sMODULARIZE=1 -sEXPORT_ES6=1 \
@@ -167,7 +172,11 @@ $(BUILD)/tests/test_port_rom_rejection.js: $(OBJ)/tests/port/test_port_rom_rejec
 	$(CXX) $^ $(NODE_LDFLAGS) -o $@
 
 # ---------------------------------------------- developer benchmark (ROM)
-bench: $(BUILD)/tools/rnr_bench.js
+bench: $(BUILD)/tools/rnr_bench.js $(BUILD)/tools/rnr_p2_check.js
+$(BUILD)/tools/rnr_p2_check.js: $(OBJ)/tools/rnr_p2_check.c.o $(CORE_OBJS) $(FRONT_OBJS) $(SHA_OBJ)
+	@mkdir -p $(dir $@)
+	$(CXX) $^ $(NODE_LDFLAGS) -o $@
+
 $(BUILD)/tools/rnr_bench.js: $(OBJ)/tools/rnr_bench.c.o $(CORE_OBJS) $(FRONT_OBJS) $(SHA_OBJ)
 	@mkdir -p $(dir $@)
 	$(CXX) $^ $(NODE_LDFLAGS) -o $@

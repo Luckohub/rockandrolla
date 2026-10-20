@@ -26,7 +26,16 @@ Componentes del proyecto original que **no** se usan en la web: SDL 3.4.10 (solo
 
 ## Código de la página
 
-`web/*.html`, `*.css`, `*.js` y `scripts/*` son de Rockanrola (zlib). No usan bibliotecas de terceros ni CDN.
+`web/*.html`, `*.css`, `*.js` y `scripts/*` son de Rockanrola (zlib). No se usan CDN.
+
+| Biblioteca | Versión | Licencia | Uso |
+|---|---|---|---|
+| PeerJS (`web/vendor/peerjs-1.5.5.min.js`) | 1.5.5, paquete npm verificado por integridad SHA-512 | MIT. Incluye eventemitter3 (MIT), webrtc-adapter (BSD-3-Clause), @msgpack/msgpack (ISC) y peerjs-js-binarypack (MIT) | Solo para jugar online. Se carga únicamente al abrir una sala o unirse a una |
+
+| Servicio externo | Uso | Alternativa |
+|---|---|---|
+| `0.peerjs.com`, gratuito, del proyecto PeerJS | Presenta a los dos navegadores y coordina la conexión | Servidor propio con `npx peerjs --port 9000` y `web/config.js` |
+| STUN de Google y TURN de PeerJS | Atravesar NAT y, si hace falta, retransmitir | Servidores propios en `iceServers` de `web/config.js` |
 
 ## Recursos del juego
 

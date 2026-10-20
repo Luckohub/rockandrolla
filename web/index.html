@@ -29,6 +29,14 @@
         El juego se ejecuta en tu equipo: no se instala nada y tu ROM nunca sale del navegador.
         Necesitás tu propia copia legal de la versión de SNES para EE.&nbsp;UU.
       </p>
+      <form id="form-unirse" class="join-form" autocomplete="off">
+        <label for="input-sala">¿Te invitaron a una partida? Pegá el enlace o el código:</label>
+        <div class="copy-row">
+          <input id="input-sala" name="sala" placeholder="Ej.: K7M2QX" maxlength="200" spellcheck="false">
+          <button class="btn" type="submit">Unirse</button>
+        </div>
+        <p class="error-inline" id="error-sala" role="alert" hidden></p>
+      </form>
     </section>
 
     <!-- 2. Carga del motor -->
@@ -90,9 +98,40 @@
         <button class="btn" id="btn-sonido" type="button">Silenciar</button>
         <button class="btn" id="btn-aspecto" type="button" title="Relación de aspecto">4:3</button>
         <button class="btn" id="btn-completa" type="button">Pantalla completa</button>
+        <button class="btn" id="btn-teclas" type="button">Teclas</button>
+        <button class="btn btn-accent" id="btn-online" type="button">Jugar online</button>
         <button class="btn btn-ghost" id="btn-rom" type="button">Cambiar ROM</button>
       </div>
       <p class="hud" id="hud" aria-live="off"></p>
+      <p class="hud hud-online" id="hud-online" aria-live="polite" hidden></p>
+    </section>
+
+    <!-- 5. Invitado (jugador 2 online): no carga el motor ni la ROM -->
+    <section id="invitado" class="screen" hidden>
+      <h2 id="titulo-invitado" class="guest-title">Partida</h2>
+      <div id="marco-invitado" class="game-frame">
+        <video id="video-remoto" autoplay playsinline aria-label="Imagen de la partida del anfitrión"></video>
+        <div id="capa-pausa-invitado" class="overlay" hidden>
+          <p class="overlay-title">Pausa</p>
+          <p>La partida está en pausa. <kbd>P</kbd> o <kbd>Esc</kbd> la reanuda.</p>
+        </div>
+        <div id="capa-invitado" class="overlay">
+          <p id="texto-invitado"></p>
+          <div class="row">
+            <button class="btn btn-primary" id="btn-unirse-ahora" type="button">Unirse</button>
+            <button class="btn" id="btn-reintentar-invitado" type="button" hidden>Reintentar</button>
+          </div>
+        </div>
+      </div>
+      <div class="toolbar" role="toolbar" aria-label="Controles del invitado">
+        <button class="btn" id="btn-pausa-invitado" type="button">Pausa</button>
+        <button class="btn" id="btn-sonido-invitado" type="button">Silenciar</button>
+        <button class="btn" id="btn-completa-invitado" type="button">Pantalla completa</button>
+        <button class="btn" id="btn-teclas-invitado" type="button">Teclas</button>
+        <button class="btn btn-ghost" id="btn-salir-invitado" type="button">Salir</button>
+      </div>
+      <p class="hud" id="hud-invitado" aria-live="off"></p>
+      <p class="fineprint">Jugás con el <strong>mando 2</strong>. La partida corre en el equipo del anfitrión y vos ves su imagen en vivo, así que tus controles tienen la demora de la conexión.</p>
     </section>
 
     <!-- Error general -->
@@ -106,21 +145,14 @@
     <section id="controles" class="info">
       <h2>Controles</h2>
       <div class="tables">
-        <table>
-          <caption>Teclado</caption>
-          <thead><tr><th>Botón SNES</th><th>Tecla</th><th>Alternativa</th></tr></thead>
-          <tbody>
-            <tr><td>Cruceta</td><td><kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd></td><td></td></tr>
-            <tr><td>B</td><td><kbd>Z</kbd></td><td><kbd>D</kbd></td></tr>
-            <tr><td>A</td><td><kbd>X</kbd></td><td><kbd>F</kbd></td></tr>
-            <tr><td>Y</td><td><kbd>A</kbd></td><td></td></tr>
-            <tr><td>X</td><td><kbd>S</kbd></td><td></td></tr>
-            <tr><td>L</td><td><kbd>E</kbd></td><td></td></tr>
-            <tr><td>R</td><td><kbd>R</kbd></td><td></td></tr>
-            <tr><td>Start</td><td><kbd>Enter</kbd></td><td><kbd>G</kbd></td></tr>
-            <tr><td>Select</td><td><kbd>Espacio</kbd></td><td><kbd>T</kbd></td></tr>
-          </tbody>
-        </table>
+        <div>
+          <table>
+            <caption>Teclado (tus teclas actuales)</caption>
+            <thead><tr><th>Botón SNES</th><th>Tecla 1</th><th>Tecla 2</th></tr></thead>
+            <tbody id="resumen-teclas"></tbody>
+          </table>
+          <button class="btn" id="btn-teclas-info" type="button">Configurar teclas</button>
+        </div>
         <table>
           <caption>Página</caption>
           <thead><tr><th>Acción</th><th>Tecla</th></tr></thead>
@@ -143,7 +175,7 @@
           </tbody>
         </table>
       </div>
-      <p class="fineprint">La asignación reproduce los perfiles de teclado del lanzador original de la recompilación. El estado guardado es una instantánea completa de la máquina y queda solo en este navegador; el juego también tiene su propio sistema de contraseñas.</p>
+      <p class="fineprint">Las teclas predeterminadas reproducen los perfiles del lanzador original de la recompilación y se pueden cambiar con «Configurar teclas»; quedan guardadas en este navegador. En una partida online, cada persona usa sus propias teclas. El estado guardado es una instantánea completa de la máquina y queda solo en este navegador; el juego también tiene su propio sistema de contraseñas.</p>
     </section>
 
     <section id="acerca" class="info">
@@ -154,7 +186,40 @@
     </section>
   </main>
 
-  <footer class="footer">Rockanrola · prueba de concepto · <a href="legal/NOTICES.txt">licencias</a></footer>
+  <dialog id="dlg-teclas" class="dialog" aria-labelledby="dlg-teclas-titulo">
+    <h2 id="dlg-teclas-titulo">Configurar teclas</h2>
+    <p class="fineprint">Hacé clic en una casilla y pulsá la tecla nueva. Cada botón admite dos teclas.</p>
+    <table class="remap">
+      <thead><tr><th>Botón SNES</th><th>Tecla 1</th><th>Tecla 2</th></tr></thead>
+      <tbody id="remap-filas"></tbody>
+    </table>
+    <p id="remap-aviso" class="status" role="status" aria-live="polite"></p>
+    <p class="fineprint">Reservadas por la página: <kbd>Esc</kbd>, <kbd>Tab</kbd> y <kbd>F1</kbd>–<kbd>F12</kbd>. <kbd>P</kbd> pausa mientras no la asignes a un botón.</p>
+    <div class="row">
+      <button class="btn" id="btn-teclas-defecto" type="button">Restaurar predeterminadas</button>
+      <button class="btn btn-accent" id="btn-teclas-cerrar" type="button">Listo</button>
+    </div>
+  </dialog>
+
+  <dialog id="dlg-online" class="dialog" aria-labelledby="dlg-online-titulo">
+    <h2 id="dlg-online-titulo">Jugar online</h2>
+    <p id="online-estado" class="status" role="status" aria-live="polite"></p>
+    <div id="online-invitacion" hidden>
+      <p>Pasale este enlace a la otra persona. Va a manejar el <strong>mando 2</strong> y a ver tu pantalla en vivo.</p>
+      <div class="copy-row">
+        <input id="online-enlace" readonly aria-label="Enlace de invitación">
+        <button class="btn" id="btn-copiar-enlace" type="button">Copiar</button>
+      </div>
+      <p class="fineprint">Código de sala: <strong id="online-codigo"></strong> · <a id="online-local" target="_blank" rel="noopener">Probar como invitado en este equipo</a></p>
+    </div>
+    <p class="fineprint">El juego corre solo en tu equipo: la otra persona no necesita la ROM ni instalar nada. Mantené esta pestaña visible mientras juegan, porque el navegador pausa las pestañas ocultas. Para la carrera a dos jugadores, elegí ese modo en el menú del juego.</p>
+    <div class="row">
+      <button class="btn" id="btn-online-cerrar-sala" type="button" hidden>Cerrar sala</button>
+      <button class="btn btn-accent" id="btn-online-listo" type="button">Volver al juego</button>
+    </div>
+  </dialog>
+
+  <footer class="footer">Rockanrola · <a href="legal/NOTICES.txt">licencias</a></footer>
 
   <noscript><p class="noscript">Rockanrola necesita JavaScript y WebAssembly activados.</p></noscript>
   <script type="module" src="app.js"></script>

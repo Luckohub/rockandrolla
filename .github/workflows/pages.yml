@@ -1,0 +1,49 @@
+# Rockanrola - página pública de invitado (GitHub Pages).
+#
+# Publica web/ SIN el motor del juego (web/engine/ no está en Git) y sin
+# ROMs. La página publicada solo sirve para unirse como jugador 2 a una
+# partida que alguien ejecuta en su propio equipo. Activar una vez en
+# Settings -> Pages -> Build and deployment -> Source: GitHub Actions.
+name: Pagina de invitado
+
+on:
+  push:
+    branches: [main]
+    paths: ['web/**', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Preparar el sitio (sin motor ni ROM)
+        run: |
+          mkdir -p _site
+          cp -r web/. _site/
+          rm -rf _site/engine
+          if find _site -type f \( -iname '*.sfc' -o -iname '*.smc' -o -iname '*.zip' -o -iname '*.wasm' \) | grep -q .; then
+            echo "Se encontró un archivo de juego o del motor: no se publica." >&2
+            exit 1
+          fi
+          ls -R _site
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
