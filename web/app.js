@@ -457,6 +457,71 @@ async function loadSnapshot() {
 }
 
 // --------------------------------------------------------------------- ROM
+// Minimal ZIP reader: finds the first .sfc/.smc entry and inflates it with
+// the browser's native DecompressionStream. No third-party code.
+class RomFileError extends Error {}
+async function unzipRom(bytes) {
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let eocd = -1;
+  for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 65557); i--) {
+    if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new RomFileError('El archivo .zip está dañado o no es un ZIP válido.');
+  const count = dv.getUint16(eocd + 10, true);
+  let p = dv.getUint32(eocd + 16, true);
+  const entries = [];
+  for (let k = 0; k < count && p + 46 <= bytes.length; k++) {
+    if (dv.getUint32(p, true) !== 0x02014b50) break;
+    const nameLen = dv.getUint16(p + 28, true);
+    entries.push({
+      flags: dv.getUint16(p + 8, true), method: dv.getUint16(p + 10, true),
+      csize: dv.getUint32(p + 20, true), usize: dv.getUint32(p + 24, true),
+      local: dv.getUint32(p + 42, true),
+      name: new TextDecoder().decode(bytes.subarray(p + 46, p + 46 + nameLen)),
+    });
+    p += 46 + nameLen + dv.getUint16(p + 30, true) + dv.getUint16(p + 32, true);
+  }
+  const pick = entries.find((e) => /\.(sfc|smc)$/i.test(e.name)) ||
+    entries.find((e) => e.usize === ROM_SIZE || e.usize === ROM_SIZE + COPIER_HEADER);
+  if (!pick) throw new RomFileError('El .zip no contiene ningún archivo .sfc o .smc.');
+  if (pick.flags & 1) throw new RomFileError('El .zip está protegido con contraseña. Descomprimilo primero.');
+  const start = pick.local + 30 + dv.getUint16(pick.local + 26, true) + dv.getUint16(pick.local + 28, true);
+  const data = bytes.subarray(start, start + pick.csize);
+  if (pick.method === 0) return { bytes: data.slice(), name: pick.name };
+  if (pick.method !== 8) throw new RomFileError('El .zip usa un método de compresión no soportado. Descomprimilo primero.');
+  if (typeof DecompressionStream !== 'function') {
+    throw new RomFileError('Este navegador no puede descomprimir .zip. Descomprimilo y elegí el archivo .sfc.');
+  }
+  const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  return { bytes: new Uint8Array(await new Response(stream).arrayBuffer()), name: pick.name };
+}
+
+// Unzips when needed; throws RomFileError with a user-facing message.
+async function expandRom(rom) {
+  const b = rom.bytes;
+  const isZip = /\.zip$/i.test(rom.name || '') ||
+    (b[0] === 0x50 && b[1] === 0x4b && b[2] === 0x03 && b[3] === 0x04);
+  if (!isZip) return rom;
+  try { return await unzipRom(b); }
+  catch (e) {
+    if (e instanceof RomFileError) throw e;
+    throw new RomFileError(`No se pudo leer el .zip: ${e.message}`);
+  }
+}
+
+// Local auto-start: scripts/serve.mjs serves the ROM from the repository's
+// rom/ folder at /local-rom (127.0.0.1 only). Static hosts have no such
+// route, so there this returns null and the normal ROM picker is used.
+async function fetchLocalRom() {
+  if (location.protocol === 'file:') return null;
+  try {
+    const res = await fetch('local-rom', { cache: 'no-store' });
+    if (!res.ok) return null;
+    const name = decodeURIComponent(res.headers.get('X-Rom-Name') || 'rom.sfc');
+    return { bytes: new Uint8Array(await res.arrayBuffer()), name, local: true };
+  } catch { return null; }
+}
+
 function normalizeRom(bytes) {
   if (bytes.length === ROM_SIZE + COPIER_HEADER) return bytes.slice(COPIER_HEADER);
   return bytes;
@@ -465,7 +530,7 @@ function normalizeRom(bytes) {
 function explainRomError(raw, bytes, sha) {
   if (/1 MiB/.test(raw)) {
     return `El archivo mide ${bytes.length.toLocaleString('es-AR')} bytes y se esperaba ` +
-      `${ROM_SIZE.toLocaleString('es-AR')} (1 MiB). Si está comprimido (.zip, .7z), descomprimilo primero.`;
+      `${ROM_SIZE.toLocaleString('es-AR')} (1 MiB). Si está comprimido en .7z o .rar, descomprimilo primero (los .zip se leen directamente).`;
   }
   if (/SHA-256/.test(raw)) {
     return 'El archivo no es la revisión soportada de Rock n\' Roll Racing para SNES (EE. UU.). ' +
@@ -502,10 +567,17 @@ async function handleRomFile(file) {
     $('error-rom').textContent = 'El archivo es demasiado grande para ser esta ROM (se espera 1 MiB).';
     return;
   }
-  const bytes = new Uint8Array(await file.arrayBuffer());
+  let rom;
+  try { rom = await expandRom({ bytes: new Uint8Array(await file.arrayBuffer()), name: file.name }); }
+  catch (e) {
+    $('error-rom').hidden = false;
+    $('error-rom').textContent = e.message;
+    return;
+  }
+  if (!state.romWaiter) return;
   const resolve = state.romWaiter;
   state.romWaiter = null;
-  resolve({ bytes, name: file.name });
+  resolve(rom);
 }
 
 $('input-rom').addEventListener('change', (e) => {
@@ -572,6 +644,13 @@ async function acquireRom() {
     if (stored && stored.bytes) { candidate = { bytes: new Uint8Array(stored.bytes), name: stored.name }; fromStore = true; }
   }
   let message = null;
+  let fromLocal = false;
+  if (state.presetRom) {
+    const preset = state.presetRom;
+    state.presetRom = null;
+    try { candidate = await expandRom(preset); fromLocal = true; fromStore = false; }
+    catch (e) { message = `La ROM de la carpeta rom no se pudo usar: ${e.message}`; candidate = null; }
+  }
   for (;;) {
     if (!candidate) {
       candidate = await waitForRom(message);
@@ -589,9 +668,10 @@ async function acquireRom() {
       return;
     }
     if (fromStore) kvDel('rom');
-    message = result.error;
+    message = fromLocal ? `La ROM de la carpeta rom no es válida. ${result.error}` : result.error;
     candidate = null;
     fromStore = false;
+    fromLocal = false;
   }
 }
 
@@ -616,6 +696,7 @@ async function start() {
     step('arranque', 'active');
     status('Arrancando…');
     await setupAudio(state.mod._rnrw_audio_rate());
+    armAudioUnlock();
     state.loaded = true;
     state.failed = false;
     $('capa-error').hidden = true;
@@ -708,4 +789,32 @@ function init() {
   window.addEventListener('unhandledrejection', (e) => console.error('[rockanrola] promesa rechazada', e.reason));
 }
 
+// Browsers only start audio after a user gesture. When the game starts by
+// itself, show a hint and resume audio on the first key, click or touch.
+function armAudioUnlock() {
+  const ctx = state.audio.ctx;
+  const hint = $('aviso-sonido');
+  if (!ctx || !state.audio.ready || ctx.state === 'running') { hint.hidden = true; return; }
+  hint.hidden = false;
+  const unlock = () => {
+    if (state.paused) return;
+    ctx.resume().then(() => {
+      if (ctx.state === 'running') {
+        hint.hidden = true;
+        for (const t of ['keydown', 'pointerdown', 'touchstart']) window.removeEventListener(t, unlock, true);
+      }
+    }).catch(() => {});
+  };
+  for (const t of ['keydown', 'pointerdown', 'touchstart']) window.addEventListener(t, unlock, true);
+}
+
+async function autostart() {
+  const rom = await fetchLocalRom();
+  if (!rom) return; // normal flow: cover page and ROM picker
+  console.info(`[rockanrola] arranque directo con la ROM local ${rom.name}`);
+  state.presetRom = rom;
+  start();
+}
+
 init();
+autostart();

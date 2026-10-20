@@ -10,5 +10,7 @@
 *.SMC
 *.ppm
 Rom/
+rom/
+*.zip
 
 node_modules/

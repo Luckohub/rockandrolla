@@ -21,6 +21,7 @@ const args = process.argv.slice(2);
 const opt = (name, fallback) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : fallback; };
 const browserName = opt('browser', 'chrome');
 const romPath = opt('rom', null);
+const localRom = args.includes('--local-rom');
 const port = Number(opt('port', 8089));
 const debugPort = 9300 + Math.floor(Math.random() * 500);
 
@@ -40,7 +41,10 @@ const results = [];
 const check = (name, ok, detail = '') => { results.push({ name, ok, detail }); console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${detail ? ` - ${detail}` : ''}`); };
 
 // ---------------------------------------------------------------- server
-const server = spawn(process.execPath, [join(here, 'serve.mjs'), String(port), join(repo, 'web')], { stdio: ['ignore', 'pipe', 'pipe'] });
+const server = spawn(process.execPath, [join(here, 'serve.mjs'), String(port), join(repo, 'web')], {
+  stdio: ['ignore', 'pipe', 'pipe'],
+  env: { ...process.env, ROCKANROLA_LOCAL_ROM: localRom ? '1' : '0' },
+});
 const serverLog = [];
 server.stdout.on('data', (d) => serverLog.push(String(d)));
 server.stderr.on('data', (d) => serverLog.push(String(d)));
@@ -129,6 +133,43 @@ const key = async (code, keyName, type) => {
 };
 const tap = async (code, keyName, holdMs = 120) => { await key(code, keyName, 'keyDown'); await sleep(holdMs); await key(code, keyName, 'keyUp'); };
 
+class Done extends Error {}
+
+async function gameChecks() {
+    await sleep(6000);
+    await screenshot('4-arranque');
+    for (let i = 0; i < 6; i++) { await tap('Enter', 'Enter'); await sleep(1500); }
+    await screenshot('5-tras-start');
+    for (let i = 0; i < 4; i++) { await tap('KeyZ', 'z', 600); await tap('ArrowRight', 'ArrowRight', 300); }
+    await sleep(3000);
+    await screenshot('6-tras-controles');
+    const autoPaused = await evaluate(visible('capa-pausa'));
+    check('sin pausa automática inesperada', !autoPaused);
+    if (autoPaused) await evaluate(`document.getElementById('btn-pausa').click()`, true);
+    const hud = await evaluate(`document.getElementById('hud').textContent`);
+    const fps = parseFloat(hud);
+    check('ritmo de frames cercano a 60 fps', fps > 55 && fps < 65, hud);
+    const stopped = await evaluate(visible('capa-error'));
+    check('el núcleo estático no se detuvo', !stopped, stopped ? await evaluate(`document.getElementById('texto-error-juego').textContent`) : '');
+    const pixels = await evaluate(`(() => { const c = document.getElementById('pantalla').getContext('2d').getImageData(0,0,256,224).data; let s = new Set(); for (let i = 0; i < c.length; i += 4*97) s.add(c[i] << 16 | c[i+1] << 8 | c[i+2]); return s.size; })()`);
+    check('la imagen tiene contenido (colores distintos)', pixels > 4, `${pixels} colores muestreados`);
+    const audio = await evaluate(`(() => { const h = document.getElementById('hud').textContent; return /audio en búfer/.test(h) ? h : null; })()`);
+    check('audio activo y alimentado', !!audio, audio || 'sin audio');
+    await tap('KeyP', 'p');
+    await sleep(400);
+    check('pausa con P', await evaluate(visible('capa-pausa')));
+    await tap('KeyP', 'p');
+    await sleep(400);
+    check('reanuda con P', !(await evaluate(visible('capa-pausa'))));
+    await evaluate(`document.getElementById('btn-guardar').click()`, true);
+    await sleep(800);
+    await evaluate(`document.getElementById('btn-cargar').click()`, true);
+    await sleep(800);
+    const t = await evaluate(`document.querySelector('.toast')?.textContent || ''`);
+    check('guardar y cargar estado', /Estado cargado/.test(t), t);
+    await screenshot('7-final');
+}
+
 function cleanup(code) {
   try { ws?.close(); } catch { /* ignore */ }
   try { browser.kill(); } catch { /* ignore */ }
@@ -142,10 +183,23 @@ try {
   await send('Network.enable');
   await send('Page.enable');
   await send('DOM.enable');
+  // Keep the headless tab "visible/focused" so the page's auto-pause on
+  // visibilitychange does not trigger (Edge headless reports hidden tabs).
+  await send('Emulation.setFocusEmulationEnabled', { enabled: true });
+  await send('Page.bringToFront');
   const version = await send('Browser.getVersion');
   console.log(`Navegador: ${version.product}`);
 
   await send('Page.navigate', { url: `http://localhost:${port}/` });
+  if (localRom) {
+    const t1 = Date.now();
+    await waitFor(`${visible('juego')} || ${visible('rom')} || ${visible('error')}`, 30000, 'arranque directo');
+    const ok = await evaluate(visible('juego'));
+    check('arranque directo con la ROM de la carpeta rom, sin clics', ok,
+      ok ? `${Date.now() - t1} ms hasta el juego` : await evaluate(`document.getElementById('error-rom').textContent || document.getElementById('texto-error').textContent`));
+    if (ok) await gameChecks();
+    throw new Done();
+  }
   await waitFor(`document.readyState === 'complete' && ${visible('portada')}`, 10000, 'portada');
   check('portada visible', true);
   await screenshot('1-portada');
@@ -206,37 +260,7 @@ try {
     await waitFor(`${visible('juego')} || /SHA|bytes/.test(document.getElementById('error-rom').textContent)`, 20000, 'arranque con ROM');
     const inGame = await evaluate(visible('juego'));
     check('la ROM aportada es aceptada y el juego arranca', inGame, inGame ? '' : await evaluate(`document.getElementById('error-rom').textContent`));
-    if (inGame) {
-      await sleep(6000);
-      await screenshot('4-arranque');
-      for (let i = 0; i < 6; i++) { await tap('Enter', 'Enter'); await sleep(1500); }
-      await screenshot('5-tras-start');
-      for (let i = 0; i < 4; i++) { await tap('KeyZ', 'z', 600); await tap('ArrowRight', 'ArrowRight', 300); }
-      await sleep(3000);
-      await screenshot('6-tras-controles');
-      const hud = await evaluate(`document.getElementById('hud').textContent`);
-      const fps = parseFloat(hud);
-      check('ritmo de frames cercano a 60 fps', fps > 55 && fps < 65, hud);
-      const stopped = await evaluate(visible('capa-error'));
-      check('el núcleo estático no se detuvo', !stopped, stopped ? await evaluate(`document.getElementById('texto-error-juego').textContent`) : '');
-      const pixels = await evaluate(`(() => { const c = document.getElementById('pantalla').getContext('2d').getImageData(0,0,256,224).data; let s = new Set(); for (let i = 0; i < c.length; i += 4*97) s.add(c[i] << 16 | c[i+1] << 8 | c[i+2]); return s.size; })()`);
-      check('la imagen tiene contenido (colores distintos)', pixels > 4, `${pixels} colores muestreados`);
-      const audio = await evaluate(`(() => { const h = document.getElementById('hud').textContent; return /audio en búfer/.test(h) ? h : null; })()`);
-      check('audio activo y alimentado', !!audio, audio || 'sin audio');
-      await tap('KeyP', 'p');
-      await sleep(400);
-      check('pausa con P', await evaluate(visible('capa-pausa')));
-      await tap('KeyP', 'p');
-      await sleep(400);
-      check('reanuda con P', !(await evaluate(visible('capa-pausa'))));
-      await evaluate(`document.getElementById('btn-guardar').click()`, true);
-      await sleep(800);
-      await evaluate(`document.getElementById('btn-cargar').click()`, true);
-      await sleep(800);
-      const t = await evaluate(`document.querySelector('.toast')?.textContent || ''`);
-      check('guardar y cargar estado', /Estado cargado/.test(t), t);
-      await screenshot('7-final');
-    }
+    if (inGame) await gameChecks();
   }
 
   if (!romPath) {
@@ -257,16 +281,17 @@ try {
     await send('Emulation.clearDeviceMetricsOverride');
   }
 
-  const errors = consoleMessages.filter((m) => m.type === 'error' || m.type === 'browser-error');
-  check('sin errores en la consola', errors.length === 0, errors.map((e) => e.text).join(' | '));
-  check('sin excepciones de JavaScript', exceptions.length === 0, exceptions.join(' | '));
-  check('sin solicitudes fallidas', failedRequests.length === 0, failedRequests.join(' | '));
-  const info = consoleMessages.filter((m) => /rockanrola/.test(m.text)).map((m) => m.text);
-  if (info.length) console.log(`Consola: ${info.join(' | ')}`);
 } catch (e) {
-  check('ejecución de la prueba', false, e.message);
-  try { await screenshot('error'); } catch { /* ignore */ }
+  if (!(e instanceof Done)) check('ejecución de la prueba', false, e.message);
+  if (!(e instanceof Done)) { try { await screenshot('error'); } catch { /* ignore */ } }
 }
+
+const errors = consoleMessages.filter((m) => m.type === 'error' || m.type === 'browser-error');
+check('sin errores en la consola', errors.length === 0, errors.map((e) => e.text).join(' | '));
+check('sin excepciones de JavaScript', exceptions.length === 0, exceptions.join(' | '));
+check('sin solicitudes fallidas', failedRequests.length === 0, failedRequests.join(' | '));
+const info = consoleMessages.filter((m) => /rockanrola/.test(m.text)).map((m) => m.text);
+if (info.length) console.log(`Consola: ${info.join(' | ')}`);
 
 writeFileSync(join(outDir, `${browserName}-resultado.json`), JSON.stringify({ browser: browserName, rom: !!romPath, results, consoleMessages, exceptions, failedRequests, serverLog }, null, 2));
 const failed = results.filter((r) => !r.ok).length;

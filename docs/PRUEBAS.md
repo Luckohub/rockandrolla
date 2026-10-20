@@ -40,16 +40,32 @@ Ejecutada en Chrome y Edge con el servidor local y la misma política CSP previs
 9. El área de juego (vacía, sin ejecutar el juego) mantiene la proporción 4:3 en escritorio: lienzo de 864×648 a 1280×900.
 10. En un teléfono de 390 px de ancho, el lienzo mide 358×268 y no hay desplazamiento horizontal.
 
-## Pendientes (requieren la ROM o equipos que no están disponibles)
+### Juego real con la ROM del usuario
+
+ROM verificada: Rock n' Roll Racing (USA), SHA-256 `9d721753…4b182`, aportada por el usuario en `rom/` como `.zip` y `.sfc`.
+
+| Prueba | Resultado |
+|---|---|
+| Motor en Node, 3 600 frames (60 s de juego) | Sin paradas del núcleo. Audio: 1 919 697 frames estéreo, esperado ~1 919 239 |
+| Rendimiento del motor en Node, antes de optimizar | 35 fps: no alcanzaba tiempo real |
+| Rendimiento del motor en Node, después de optimizar | 110 fps |
+| Equivalencia de las optimizaciones, 1 800 frames | Hash de video, instrucciones y PCM idénticos |
+| Arranque directo desde `rom/` sin clics, Chrome y Edge | 0,5–0,7 s hasta el juego |
+| Ritmo en el navegador | 60,0 fps en Chrome y Edge. CPU por frame: 6–14 ms en Chrome, 11 ms en Edge |
+| Menús con teclado | Los toques de Start llegan a la pantalla «Select Hero» |
+| Audio | Activo, con 90–130 ms en búfer. Cortes contados: 1 en Chrome y hasta 12 en Edge sin interfaz. Falta verificarlo a oído |
+| Pausa y reanudación con P, guardar y cargar estado | Correctos |
+| Consola, excepciones, solicitudes fallidas | Sin errores |
+
+`node scripts\browser-test.mjs --local-rom` superó 11/11 comprobaciones en Chrome y 12/12 en Edge. La de Edge incluye además la comprobación de pausa automática.
+
+## Pendientes
 
 | Prueba | Motivo |
 |---|---|
-| **Sesión de juego real**: arranque, menús, carrera, controles, armas | No hay ROM en el equipo y no se descarga. Con la ROM: `node scripts\browser-test.mjs --rom <ruta>` lo automatiza en parte |
-| Ritmo real de 60 fps y costo por frame | Requiere la ROM. Además, `rnr_bench.js` mide la velocidad del motor en Node |
-| Calidad y sincronía del audio del juego | Requiere la ROM |
-| Imagen correcta | Requiere la ROM. La prueba compara capturas y cuenta colores |
-| Instantáneas: guardar, cargar y persistir tras recargar | Requiere el juego en marcha |
-| Reinicio | Requiere el juego en marcha |
+| Carrera completa, armas, turbo, compras y contraseñas | Prueba manual |
+| Calidad del audio a oído y cortes en Edge | Prueba manual |
+| Botón Reiniciar y persistencia de instantáneas tras recargar | Prueba manual |
 | Mandos físicos | No hay un mando conectado durante la sesión |
 | Pantalla completa | La prueba sin interfaz no la cubre; queda para verificación manual. El cambio de tamaño sí se probó con el área vacía |
 | Firefox | No está instalado en el equipo |

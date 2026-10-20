@@ -51,8 +51,8 @@
       <p>El motor necesita la ROM original de <strong>Rock n' Roll Racing (USA)</strong> para SNES. Se verifica y se usa solo en este navegador.</p>
       <label id="zona-rom" class="dropzone" for="input-rom" tabindex="0">
         <span class="dz-main">Arrastrá el archivo acá o hacé clic para buscarlo</span>
-        <span class="dz-sub">.sfc o .smc · 1&nbsp;MiB · se acepta y se quita la cabecera de copiador de 512 bytes</span>
-        <input id="input-rom" type="file" accept=".sfc,.smc,.bin,application/octet-stream">
+        <span class="dz-sub">.sfc, .smc o .zip · 1&nbsp;MiB · se acepta y se quita la cabecera de copiador de 512 bytes</span>
+        <input id="input-rom" type="file" accept=".sfc,.smc,.zip,.bin,application/zip,application/octet-stream">
       </label>
       <label class="check"><input type="checkbox" id="recordar-rom"> Recordar la ROM en este navegador (se guarda solo en tu equipo)</label>
       <p class="error-inline" id="error-rom" role="alert" hidden></p>
@@ -68,6 +68,7 @@
     <section id="juego" class="screen" hidden>
       <div id="marco" class="game-frame">
         <canvas id="pantalla" width="256" height="224" aria-label="Pantalla del juego"></canvas>
+        <button id="aviso-sonido" class="sound-hint" type="button" hidden>🔇 Tocá una tecla o hacé clic para activar el sonido</button>
         <div id="capa-pausa" class="overlay" hidden>
           <p class="overlay-title">Pausa</p>
           <p>Pulsá <kbd>P</kbd> o <kbd>Esc</kbd>, o el botón Reanudar.</p>

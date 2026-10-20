@@ -7,7 +7,7 @@ Este informe distingue entre lo **verificado** (ejecutado o leído en el código
 ## 1. Resumen
 
 - **Estrategia elegida:** compilar a WebAssembly la recompilación estática de la versión de SNES (EE. UU.) publicada por Junior-Jones. El núcleo es C11/C++17 portable y se compila **sin modificar ni una línea** del proyecto original.
-- **Estado:** prueba de concepto técnica completa. El motor compila para el navegador, pasa en WebAssembly todas las pruebas sin ROM del proyecto original y la página funciona en Chrome y Edge. **No se pudo ejecutar una partida real** porque en este equipo no hay una copia de la ROM y no corresponde descargarla.
+- **Estado:** versión parcialmente jugable. Con la ROM del usuario, el juego real corre en Chrome y Edge a 60 fps con sonido. Se recorrieron los menús hasta la selección de piloto, y funcionan la pausa y las instantáneas. Una carrera completa no se verificó todavía.
 - **Impedimento para publicar el sitio:** el código generado es una traducción del programa original del juego y el repositorio de origen no tiene licencia propia. Publicarlo en `www.rockanrola.com.ar` requiere permisos que hoy no existen (sección 6).
 - **Blizzard Arcade Collection:** no ofrece una vía técnica ni legal para un port web. Se documenta en la sección 2.
 
@@ -87,11 +87,11 @@ Inspeccionado en el commit `4f4a9a62cecd349ae7acdce8c4b75532f3733ca3` (versión 
 |---|---|---|---|---|---|
 | Fidelidad | Máxima para la *Definitive Edition*, pero inaccesible | Alta: ejecuta el código original traducido con tiempos exactos, sin extras | Alta, con extras opcionales | Alta en teoría | Alta, depende del emulador |
 | Código disponible | Ninguno | Completo; sin licencia propia; Snes9x no comercial en el audio | Completo; PolyForm no comercial; muy nuevo | Ninguno | Abundante (GPL-3 o no comercial) |
-| Compatibilidad web | Nula | **Verificada**: compila y pasa las pruebas en wasm | Sin evaluar (SDL3, OpenGL, submódulos) | No aplica | Probada por terceros |
+| Compatibilidad web | Nula | **Verificada**: el juego real corre en el navegador | Sin evaluar (SDL3, OpenGL, submódulos) | No aplica | Probada por terceros |
 | Trabajo necesario | No viable | Capa web: hecha. Falta probar con la ROM | Port de SDL3/GL y generación | Recompilador completo | Integración y UI |
 | Dependencias | — | Emscripten 6.0.10 (Docker) | snesrecomp, recomp-ui, SDL3, Clang | Herramientas a crear | Núcleo libretro y frontend |
 | Recursos originales | Archivos propietarios de Battle.net | ROM SNES EE. UU. del usuario | ROM SNES del usuario, también al compilar | ROM MD del usuario | ROM del usuario |
-| Rendimiento | — | Sin medir con el juego. Esperable holgado: del orden de decenas de miles de instrucciones de CPU por frame, ya traducidas a código nativo | Sin medir | — | Conocido y suficiente en PC |
+| Rendimiento | — | Medido: 60 fps en Chrome y Edge, 6–14 ms de CPU por frame tras dos optimizaciones del port | Sin medir | — | Conocido y suficiente en PC |
 | Mantenimiento | — | Bajo: el original no prevé más cambios y la compilación está fijada | Alto: proyecto en movimiento | Muy alto | Bajo |
 | Tiempo estimado | — | Prueba de concepto: hecha. Port completo: 1–3 semanas tras probar con la ROM, con incertidumbre sobre paradas del núcleo | 2–6 semanas, alta incertidumbre | 6–18 meses | 2–5 días |
 | Resultado | Imposible | **Recompilación estática nativa en wasm** | Recompilación estática | Recompilación desde cero | Emulación web |
@@ -127,11 +127,22 @@ Navegador
 - **Sincronía:** el reloj del juego avanza por tiempo real y se ajusta hasta ±1 % según el audio en cola, así se evitan cortes y deriva.
 - **Pausa automática:** al ocultar la pestaña.
 
+### Optimizaciones del port
+
+La primera medición con la ROM dio 35 fps en WebAssembly, insuficiente. El perfil mostró dos costos ajenos al juego. Ambos se resolvieron sin editar el código original.
+
+| Cambio | Causa | Efecto |
+|---|---|---|
+| `port/src/fast_snprintf.c` | La sincronización de audio limpia su mensaje de error con `snprintf(buf, n, "%s", "")` miles de veces por frame | Atajo exacto para el formato `"%s"`, misma semántica C99 |
+| `port/src/apu_sync_batch.c` | El planificador sincroniza el procesador de audio en cada acceso al bus y copia su estado completo cada vez | Sincroniza como máximo una vez por línea de barrido y siempre antes de cada acceso a los puertos de audio. Se aplica redirigiendo tres funciones con `-D` solo al compilar `v10_2_machine.c` |
+
+Comprobación de equivalencia con 1 800 frames del juego real: mismo hash de los 1 800 frames de video, mismo número de instrucciones (22 863 167) y audio PCM idéntico byte a byte. Solo cambian contadores de diagnóstico del audio. El motor pasó de 35 a 110 fps en Node, y en el navegador usa entre 6 y 14 ms de CPU por frame de los 16,6 ms disponibles.
+
 ## 9. Estimación del trabajo restante
 
 | Tarea | Estimación | Depende de |
 |---|---|---|
-| Primera sesión real con ROM y corrección de problemas de integración | 0,5–2 días | ROM del usuario |
+| Partida completa, varias pistas y modo de dos jugadores | 0,5–2 días | Prueba manual |
 | Ajuste fino de audio y latencia, medición de rendimiento | 1–2 días | ROM |
 | Paradas "fail-closed" del núcleo que aparezcan en rutas no probadas por el autor | Indeterminado: requiere regenerar con sus herramientas Python o pedir corrección al autor | Uso real |
 | Controles táctiles para móviles | 2–3 días | — |

@@ -1,7 +1,7 @@
 /* Rockanrola developer tool: runs the WebAssembly build of the static core
    headlessly under Node.js against the user's own ROM and reports speed.
 
-     node build/tools/rnr_bench.js <rom.sfc> [frames] [out.ppm]
+     node build/tools/rnr_bench.js <rom.sfc> [frames] [out.ppm] [out.pcm]
 
    It presses Start periodically so the attract/title flow advances, writes
    the final frame as a PPM image and reports how many frames per second the
@@ -48,6 +48,8 @@ int main(int argc, char **argv) {
     unsigned frames = argc > 2 ? (unsigned)strtoul(argv[2], NULL, 10) : 1800u;
     unsigned frame;
     double start, elapsed;
+    uint64_t frame_hash = UINT64_C(0xcbf29ce484222325);
+    FILE *pcm_out = argc > 4 ? fopen(argv[4], "wb") : NULL;
 
     if (argc < 2) {
         fprintf(stderr, "usage: %s <rom.sfc> [frames] [out.ppm]\n", argv[0]);
@@ -75,15 +77,28 @@ int main(int argc, char **argv) {
             return 1;
         }
         size_t got;
-        while ((got = rnr_recomp_audio_read(game, pcm, 4096u)) != 0u)
+        while ((got = rnr_recomp_audio_read(game, pcm, 4096u)) != 0u) {
             audio_total += got;
+            if (pcm_out) fwrite(pcm, sizeof(int16_t) * 2u, got, pcm_out);
+        }
+        {
+            /* FNV-1a over every presented frame: proves identical video. */
+            const uint32_t *px = rnr_recomp_frame_bgra(game);
+            unsigned i;
+            for (i = 0u; i < 256u * 224u; ++i) {
+                frame_hash ^= px[i];
+                frame_hash *= UINT64_C(1099511628211);
+            }
+        }
     }
+    if (pcm_out) fclose(pcm_out);
     elapsed = now_seconds() - start;
     printf("frames=%u seconds=%.3f fps=%.1f (realtime needs 60.1) "
            "instructions=%llu audio_frames=%zu (expected ~%zu)\n",
            frames, elapsed, frames / elapsed,
            (unsigned long long)rnr_recomp_instruction_count(game), audio_total,
            (size_t)(frames * 32040.0 / 60.0988));
+    printf("video_hash=%016llx\n", (unsigned long long)frame_hash);
 
     if (argc > 3) {
         const uint32_t *px = rnr_recomp_frame_bgra(game);

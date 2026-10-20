@@ -51,7 +51,8 @@ PORT_C   := shim/bcrypt_sha256.c src/rnr_web.c
 to_obj = $(patsubst $(ROOT)/%,$(OBJ)/%.o,$(1))
 
 CORE_OBJS := $(call to_obj,$(CORE_STRICT_C) $(CORE_GEN_C) $(CORE_LOOSE_C) \
-                           $(CORE_STRICT_CXX) $(CORE_LOOSE_CXX))
+                           $(CORE_STRICT_CXX) $(CORE_LOOSE_CXX)) \
+             $(OBJ)/port/src/fast_snprintf.c.o              $(OBJ)/port/src/apu_sync_batch.c.o
 FRONT_OBJS := $(call to_obj,$(FRONT_C))
 PORT_OBJS  := $(patsubst %,$(OBJ)/port/%.o,$(PORT_C))
 
@@ -89,6 +90,14 @@ $(FRONT_OBJS): $(OBJ)/%.c.o: $(ROOT)/%.c
 $(OBJ)/port/%.c.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -Ishim $(STRICT) -c $< -o $@
+
+# Batched audio rendezvous (see port/src/apu_sync_batch.c): only the machine
+# translation unit is redirected; the upstream file itself is not edited.
+APU_BATCH ?= 1
+ifeq ($(APU_BATCH),1)
+$(OBJ)/third_party/rnrr-recomp/runtime/v10_2_machine.c.o: CFLAGS +=   -Djs_v10_2_apu_sync=rockanrola_apu_sync   -Djs_v10_2_apu_cpu_read=rockanrola_apu_cpu_read   -Djs_v10_2_apu_cpu_write=rockanrola_apu_cpu_write
+endif
+$(OBJ)/third_party/rnrr-recomp/runtime/v10_2_machine.c.o: Makefile
 
 # ---------------------------------------------------------------- web module
 WEB_LDFLAGS := $(OPT) -sMODULARIZE=1 -sEXPORT_ES6=1 \

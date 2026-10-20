@@ -4,7 +4,7 @@ Rock ’n’ Roll Racing de Super Nintendo en el navegador, sin instalar nada y 
 
 Rockanrola compila a WebAssembly la [recompilación estática de Rock n' Roll Racing (SNES) de Junior-Jones](https://github.com/Junior-Jones/Rock-N-Roll-Racing-SNES-Static-Recomp). En esa recompilación, el código del juego ya fue traducido a C de antemano. Rockanrola le agrega una capa web: imagen en un `<canvas>`, sonido con Web Audio, teclado y mando con la Gamepad API, pausa, reinicio, pantalla completa e instantáneas.
 
-> **Estado: prueba de concepto.** El motor compila y pasa sus pruebas en WebAssembly. La página funciona en Chrome y Edge. **Todavía no se probó una partida real** porque hace falta la ROM, que el proyecto no incluye. Ver [docs/PRUEBAS.md](docs/PRUEBAS.md).
+> **Estado: jugable en local.** El juego real corre en Chrome y Edge a 60 fps, con sonido, controles, pausa e instantáneas. Una carrera completa todavía no se verificó de punta a punta. Ver [docs/PRUEBAS.md](docs/PRUEBAS.md).
 
 > **No publicar todavía en internet.** Hay impedimentos legales sin resolver, explicados en [docs/INFORME-VIABILIDAD.md](docs/INFORME-VIABILIDAD.md#6-restricciones-legales).
 
@@ -39,7 +39,16 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Tests
 powershell -ExecutionPolicy Bypass -File scripts\serve.ps1
 ```
 
-Abrí <http://localhost:8080>, pulsá **Jugar** y elegí tu ROM.
+Abrí <http://localhost:8080>, pulsá **Jugar** y elegí tu ROM. Si ese puerto está ocupado, usá otro con `scripts\serve.ps1 -Port 8090`.
+
+### Arranque directo
+
+Si ponés tu ROM en la carpeta `rom/` del proyecto, el juego arranca solo al abrir la página. La carpeta acepta `.sfc`, `.smc` o `.zip`.
+
+- El servidor local la entrega en la ruta `/local-rom` y solo escucha en 127.0.0.1.
+- El navegador exige una tecla o un clic antes de reproducir sonido, y la página lo indica.
+- La carpeta `rom/` está excluida de Git. Un hosting público no tiene esa ruta, así que la ROM nunca se publica.
+- Para desactivarlo, iniciá el servidor con `ROCKANROLA_LOCAL_ROM=0`.
 
 - La primera compilación descarga la imagen `emscripten/emsdk:6.0.10`, que ocupa unos 3,4 GB en disco.
 - Después tarda menos de 2 minutos en este equipo.
@@ -84,6 +93,7 @@ Los dos juegos de teclas reproducen los perfiles "clásico" y "predeterminado" d
 |---|---|
 | `third_party/rnrr-recomp/` | Submódulo con la recompilación original, fijado en `4f4a9a6`. **No se modifica** |
 | `port/shim/` | Sustitutos de `windows.h` y `bcrypt.h` con un SHA-256 portable. Es la única dependencia de Windows que había en el núcleo |
+| `port/src/fast_snprintf.c`, `port/src/apu_sync_batch.c` | Optimizaciones del port que no cambian el resultado (ver informe, sección 8) |
 | `port/src/rnr_web.c` | API `rnrw_*` que el JavaScript usa para crear el juego, avanzar frames, leer imagen y audio, manejar la entrada y las instantáneas |
 | `port/tests/`, `port/tools/` | Pruebas propias y una herramienta de rendimiento que usa tu ROM en Node |
 | `port/Makefile` | Compilación con Emscripten |
@@ -104,6 +114,9 @@ node scripts\browser-test.mjs --browser edge
 # Con tu ROM: arranca el juego, pulsa Start, mide fps y audio,
 # prueba pausa e instantáneas, y guarda capturas en build\browser-test\
 node scripts\browser-test.mjs --browser chrome --rom "C:\ruta\a\Rock n' Roll Racing (USA).sfc"
+
+# Con la ROM en rom\: comprueba el arranque directo sin clics
+node scripts\browser-test.mjs --browser chrome --local-rom
 
 # Rendimiento del motor wasm en Node, con tu ROM
 powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Bench
