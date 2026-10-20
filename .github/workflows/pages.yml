@@ -9,7 +9,7 @@ name: Pagina de invitado
 on:
   push:
     branches: [main]
-    paths: ['web/**', '.github/workflows/pages.yml']
+    paths: ['web/**', 'scripts/prepare-public.mjs', '.github/workflows/pages.yml']
   workflow_dispatch:
 
 permissions:
@@ -31,16 +31,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Preparar el sitio (sin motor ni ROM)
-        run: |
-          mkdir -p _site
-          cp -r web/. _site/
-          rm -rf _site/engine
-          if find _site -type f \( -iname '*.sfc' -o -iname '*.smc' -o -iname '*.zip' -o -iname '*.wasm' \) | grep -q .; then
-            echo "Se encontró un archivo de juego o del motor: no se publica." >&2
-            exit 1
-          fi
-          ls -R _site
+        run: node scripts/prepare-public.mjs _site
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

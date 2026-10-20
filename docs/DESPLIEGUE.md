@@ -10,7 +10,66 @@
 
 No se asume que el dominio esté registrado ni que exista un servidor.
 
-## 1. Qué hay que publicar
+## 0. Publicar gratis la página de invitado (se puede hacer ya)
+
+Hay dos sitios distintos, y solo uno se puede publicar hoy:
+
+| Sitio | Contenido | ¿Se puede publicar? |
+|---|---|---|
+| **Página de invitado**, armada por `node scripts/prepare-public.mjs` en `build/public/` | Interfaz, PeerJS y el reproductor de video. Sin motor ni ROM | **Sí.** No contiene código del juego. Sirve para que otra persona se una como jugador 2 |
+| **Sitio completo**, que es `web/` con `engine/` | Además, el motor wasm con el programa del juego traducido | **No**, por los puntos legales de arriba |
+
+El anfitrión sigue jugando desde su equipo, en `http://localhost:8090`. Solo el invitado usa la página pública.
+
+### Dónde publicarla gratis
+
+| Opción | Dirección resultante | Costo | Comentario |
+|---|---|---|---|
+| **Cloudflare Pages** (recomendada) | `rockanrola.pages.dev`, o el nombre que esté libre | Gratis | HTTPS automático, red rápida en Argentina, aplica `_headers` (CSP). Es un dominio `.dev` |
+| GitHub Pages | `luckohub.github.io/rockandrolla` | Gratis | Ya está preparado (`.github/workflows/pages.yml`). Solo falta activarlo en Settings → Pages. No aplica `_headers` |
+| Netlify | `rockanrola.netlify.app` | Gratis | Aplica `_headers` |
+| is-a.dev | `rockanrola.is-a.dev` | Gratis | Subdominio para proyectos de desarrolladores. Se pide con un pull request al repositorio `is-a-dev/register` y lo aprueban personas, según sus reglas. Apunta a cualquiera de las opciones anteriores |
+| Dominio propio `.xyz` o `.dev` | `rockanrola.xyz`, `rockanrola.dev` | **No es gratis** | Lo habitual es unos pocos dólares el primer año en `.xyz` y USD 10–15 por año en `.dev`, a verificar en el registrador. Cloudflare Registrar vende al costo. Se conecta a Cloudflare Pages como «custom domain» |
+| `rockanrola.com.ar` | `www.rockanrola.com.ar` | Pago anual bajo en NIC Argentina | Era el dominio previsto. Se conecta igual que el anterior |
+
+### Opción A: Cloudflare Pages desde GitHub (se actualiza solo)
+
+1. Creá una cuenta gratis en <https://dash.cloudflare.com>.
+2. Entrá a **Workers & Pages → Create → Pages → Connect to Git** y elegí `Luckohub/rockandrolla`.
+3. Configurá el build:
+   - Framework preset: **None**.
+   - Build command: `node scripts/prepare-public.mjs public_out`
+   - Build output directory: `public_out`
+4. Elegí el nombre del proyecto, por ejemplo `rockanrola`, y pulsá **Save and Deploy**. Queda en `https://rockanrola.pages.dev`.
+5. En `web/config.js`, cambiá `guestUrl` por esa dirección. Así los enlaces que genera tu equipo, en localhost, apuntan ahí. Subí el cambio a GitHub.
+
+Cada `git push` vuelve a publicar la página. El script corta el build si encuentra un `.wasm` o una ROM.
+
+### Opción B: Cloudflare Pages desde tu PC (sin conectar GitHub)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\publish-cloudflare.ps1 -Project rockanrola
+```
+
+El script hace tres cosas:
+
+1. Arma `build\public` sin motor ni ROM.
+2. Muestra la lista de archivos.
+3. Lo sube con Wrangler, la herramienta oficial de Cloudflare, mediante `npx`. La primera vez abre el navegador para iniciar sesión.
+
+**Nunca subas la carpeta `web\` directamente**, porque en tu equipo contiene el motor compilado.
+
+### Opción C: GitHub Pages
+
+En GitHub, entrá a **Settings → Pages → Source: GitHub Actions** y volvé a ejecutar el flujo «Pagina de invitado» desde **Actions**. Queda en `https://luckohub.github.io/rockandrolla/`, que es la dirección que trae `web/config.js` por defecto.
+
+### Comprobar la publicación
+
+- Abrí la dirección pública. Tiene que aparecer la nota «Esta es la página pública…» y el formulario para unirse.
+- En tu equipo, abrí una sala con **Jugar online** y abrí el enlace desde otro dispositivo, por ejemplo tu celular con datos móviles.
+- `node scripts\online-test.mjs --public` simula este caso en un solo equipo, sirviendo la copia pública bajo un dominio que no es localhost.
+
+## 1. Sitio completo: qué habría que publicar
 
 Solo la carpeta `web/` después de compilar:
 

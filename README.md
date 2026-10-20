@@ -112,6 +112,17 @@ Detalles:
 - **Página del invitado:** el enlace apunta a `https://luckohub.github.io/rockandrolla/`. Esa página no contiene el motor ni la ROM, solo la interfaz para unirse. Para activarla una vez, andá en GitHub a **Settings → Pages → Source: GitHub Actions**. El flujo `.github/workflows/pages.yml` la publica en cada cambio.
 - **Prueba en un solo equipo:** el enlace «Probar como invitado en este equipo» abre la misma sala en otra pestaña o navegador.
 
+## Publicar la página de invitado gratis
+
+La página que usa el invitado no contiene el motor ni la ROM, así que se puede publicar.
+
+- **Armar la copia:** `node scripts/prepare-public.mjs` la arma en `build/public/` y verifica que no se cuele nada del juego.
+- **Recomendado:** Cloudflare Pages, gratis, en `https://<nombre>.pages.dev`. Se publica con `scripts\publish-cloudflare.ps1 -Project <nombre>` o conectando el repositorio en Cloudflare.
+- **Alternativas:** GitHub Pages, Netlify o un subdominio de is-a.dev.
+- **Dominios propios:** `.xyz`, `.dev` o `.com.ar` son pagos, aunque baratos.
+
+Los pasos completos están en [docs/DESPLIEGUE.md](docs/DESPLIEGUE.md#0-publicar-gratis-la-página-de-invitado-se-puede-hacer-ya). El sitio completo, con el motor, sigue sin poder publicarse por los motivos legales del informe.
+
 ## Estructura
 
 | Carpeta | Contenido |

@@ -1,6 +1,10 @@
 // Rockanrola - end-to-end check of online play and key remapping.
 //
-//   node scripts/online-test.mjs [--browser chrome|edge]
+//   node scripts/online-test.mjs [--browser chrome|edge] [--public]
+//
+// --public: the guest uses the PUBLIC copy (scripts/prepare-public.mjs)
+// served under a non-localhost name (rockanrola.test, treated as a secure
+// origin), the way a brother at home would open the published page.
 //
 // Needs your ROM in rom/ (local auto-start) and internet access to the
 // PeerJS broker (0.peerjs.com). Opens two windows of one headless browser:
@@ -8,7 +12,7 @@
 // the guest receives the video, that the guest's keys drive SNES controller
 // 2 inside the host's engine, latency reporting, pause from both sides,
 // disconnection, and keyboard remapping. Screenshots: build/online-test/.
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -19,6 +23,7 @@ const repo = resolve(here, '..');
 const args = process.argv.slice(2);
 const opt = (name, fallback) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : fallback; };
 const browserName = opt('browser', 'chrome');
+const publicMode = args.includes('--public');
 const port = Number(opt('port', 8088));
 const debugPort = 9800 + Math.floor(Math.random() * 150);
 const BROWSERS = {
@@ -75,15 +80,40 @@ class Cdp {
 const server = spawn(process.execPath, [join(here, 'serve.mjs'), String(port), join(repo, 'web')], {
   stdio: 'ignore', env: { ...process.env, ROCKANROLA_LOCAL_ROM: '1' },
 });
+const publicPort = port + 1;
+const publicOrigin = `http://rockanrola.test:${publicPort}`;
+let publicServer = null;
+if (publicMode) {
+  const prep = spawnSync(process.execPath, [join(here, 'prepare-public.mjs')], { encoding: 'utf8' });
+  if (prep.status !== 0) { console.error(prep.stderr); process.exit(1); }
+  publicServer = spawn(process.execPath, [join(here, 'serve.mjs'), String(publicPort), join(repo, 'build', 'public')], {
+    stdio: 'ignore', env: { ...process.env, ROCKANROLA_LOCAL_ROM: '0' },
+  });
+}
 const profile = mkdtempSync(join(tmpdir(), 'rockanrola-online-'));
 const browser = spawn(exe, ['--headless=new', `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profile}`,
   '--no-first-run', '--no-default-browser-check', '--autoplay-policy=no-user-gesture-required',
   // Automation: do not throttle windows the OS reports as hidden/occluded.
   '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling',
-  '--window-size=1100,860', 'about:blank'], { stdio: 'ignore' });
-function cleanup(code) {
-  try { browser.kill(); } catch { /* ignore */ }
+  '--disable-features=CalculateNativeWinOcclusion',
+  '--window-size=1100,860',
+  ...(publicMode ? [`--host-resolver-rules=MAP rockanrola.test 127.0.0.1`, `--unsafely-treat-insecure-origin-as-secure=${publicOrigin}`] : []),
+  'about:blank'], { stdio: 'ignore' });
+// Ends the whole browser: a polite CDP Browser.close first, then the full
+// process tree (on Windows, killing only the parent leaves renderer and GPU
+// processes running and they pile up across runs).
+async function closeBrowser(child, closeViaCdp) {
+  try { await Promise.race([closeViaCdp(), sleep(1500)]); } catch { /* already gone */ }
+  await sleep(300);
+  if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+  else { try { child.kill('SIGKILL'); } catch { /* ignore */ } }
+}
+
+let rootCdp = null;
+async function cleanup(code) {
+  await closeBrowser(browser, () => (rootCdp ? rootCdp.send('Browser.close') : Promise.resolve()));
   try { server.kill(); } catch { /* ignore */ }
+  try { publicServer && publicServer.kill(); } catch { /* ignore */ }
   setTimeout(() => { try { rmSync(profile, { recursive: true, force: true }); } catch { /* locked */ } process.exit(code); }, 600);
 }
 
@@ -93,6 +123,7 @@ try {
   let version;
   for (let i = 0; i < 50 && !version; i++) { await sleep(200); try { version = await (await fetch(`http://127.0.0.1:${debugPort}/json/version`)).json(); } catch { /* starting */ } }
   const root = await new Cdp(version.webSocketDebuggerUrl, 'browser').connect();
+  rootCdp = root;
   console.log(`Navegador: ${version.Browser}`);
   const list = await (await fetch(`http://127.0.0.1:${debugPort}/json/list`)).json();
   host = await new Cdp(list.find((t) => t.type === 'page').webSocketDebuggerUrl, 'anfitrión').connect();
@@ -117,8 +148,13 @@ try {
 
   // ---- Guest joins with the code.
   const t0 = Date.now();
-  await guest.send('Page.navigate', { url: `http://localhost:${port}/?sala=${code}` });
+  const guestUrl = publicMode ? `${publicOrigin}/?sala=${code}` : `http://localhost:${port}/?sala=${code}`;
+  await guest.send('Page.navigate', { url: guestUrl });
   await guest.waitFor(`!document.getElementById('invitado').hidden`, 10000, 'pantalla de invitado');
+  if (publicMode) {
+    const secure = await guest.eval(`window.isSecureContext && location.hostname`);
+    check('el invitado abre la copia pública en un dominio no local', secure === 'rockanrola.test', `${guestUrl} (contexto seguro: ${!!secure})`);
+  }
   const engineRequested = await guest.eval(`performance.getEntriesByType('resource').some((e) => /rockanrola\\.wasm|local-rom/.test(e.name))`);
   check('el invitado no descarga el motor ni la ROM', !engineRequested);
   await guest.eval(`document.getElementById('btn-unirse-ahora').click()`, true);
@@ -132,6 +168,9 @@ try {
   check('el anfitrión ve al jugador 2 conectado', await host.waitFor(`window.__rockanrola.guestConnected()`, 10000, 'conexión'));
   // Let WebRTC's bandwidth estimate ramp up, then count decoded frames for 5 s.
   await sleep(4000);
+  const hs0 = await host.eval(`window.__rockanrola.hostVideoStats()`);
+  const gs0 = await guest.eval(`window.__rockanrola.guestVideoStats()`);
+  const tStats = Date.now();
   const vq = await guest.eval(`new Promise((res) => { const v = document.getElementById('video-remoto'); const seen = new Set(); const t = performance.now();
     const cb = (now, md) => { seen.add(md.presentedFrames); if (performance.now() - t < 5000) v.requestVideoFrameCallback(cb); else res({ fps: seen.size / ((performance.now() - t) / 1000), w: v.videoWidth, h: v.videoHeight }); };
     v.requestVideoFrameCallback(cb); })`);
@@ -139,13 +178,20 @@ try {
   const draws = await host.eval(`window.__rockanrola.drawsPerSecond()`);
   const hs = await host.eval(`window.__rockanrola.hostVideoStats()`);
   const gs = await guest.eval(`window.__rockanrola.guestVideoStats()`);
+  // Rates from cumulative counters over the whole window (the instantaneous
+  // framesPerSecond stat fluctuates from one sample to the next).
+  const secs = (Date.now() - tStats) / 1000;
+  hs.sentFps = (hs.framesSent - hs0.framesSent) / secs;
+  gs.recvFps = (gs.framesDecoded - gs0.framesDecoded) / secs;
+  gs.framesDropped -= gs0.framesDropped;
   // WebRTC's own counters are authoritative; the on-screen count is limited
   // by headless compositing when both windows share one machine.
   // Every frame the host draws must reach the guest. (The host's draw rate
   // follows requestAnimationFrame, which headless windows may throttle.)
+  console.log(`  codificador: ${hs?.encoder} | decodificador: ${gs?.decoder}`);
   check('fluidez del video en el invitado (WebRTC)', gs && hs && draws >= 45 && hs.sentFps >= draws * 0.9 &&
     gs.recvFps >= draws * 0.9 && gs.framesDropped === 0,
-    `enviados ${hs?.sentFps} fps, decodificados ${gs?.recvFps} fps, perdidos ${gs?.framesDropped}, búfer ${gs?.jitterBufferMs?.toFixed(0)} ms, ` +
+    `enviados ${hs?.sentFps?.toFixed(1)} fps, decodificados ${gs?.recvFps?.toFixed(1)} fps, perdidos ${gs?.framesDropped}, búfer ${gs?.jitterBufferMs?.toFixed(0)} ms, ` +
     `limitación «${hs?.limitation}», ${(8 * (hs?.bytesSent || 0) / 1e6 / Math.max(1, (hs?.framesSent || 1) / 60)).toFixed(1)} Mbit/s; ` +
     `presentados en pantalla ${vq.fps.toFixed(0)}/s; anfitrión ${hostFps} fps de juego y ${draws.toFixed(0)} dibujados/s`);
   const hasAudio = await guest.eval(`document.getElementById('video-remoto').srcObject.getAudioTracks().length`);

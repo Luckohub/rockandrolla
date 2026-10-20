@@ -14,7 +14,7 @@ const MAX_FRAMES_PER_TICK = 4;
 
 import { buildLookup, loadKeymap, loadLayoutLabels, readGamepads } from './keymap.js';
 import { createKeysUI } from './keys-ui.js';
-import { HostSession, inviteLink, normalizeCode } from './net.js';
+import { HostSession, inviteLink, isLocalHost, normalizeCode } from './net.js';
 import { createGuest } from './guest.js';
 import { NET } from './config.js';
 
@@ -908,6 +908,8 @@ function init() {
     history.pushState(null, '', `?sala=${code}`);
     guest.open(code);
   });
+
+  if (!isLocalHost()) $('nota-publica').hidden = false;
 
   // Small read-only hook for scripts/online-test.mjs and troubleshooting.
   window.__rockanrola = Object.freeze({

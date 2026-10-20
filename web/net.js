@@ -44,7 +44,16 @@ export function normalizeCode(text) {
   return (m ? m[1] : (text || '')).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
 }
 
-export function inviteLink(code, base = NET.guestUrl) {
+export const isLocalHost = () => ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+
+// Where the guest should go: this same site when it is already public
+// (Cloudflare Pages, GitHub Pages, your domain...), otherwise NET.guestUrl.
+export function guestBaseUrl() {
+  if (!isLocalHost() && location.protocol === 'https:') return new URL('./', location.href).toString();
+  return NET.guestUrl;
+}
+
+export function inviteLink(code, base = guestBaseUrl()) {
   const url = new URL(base, location.href);
   url.search = `?sala=${code}`;
   url.hash = '';

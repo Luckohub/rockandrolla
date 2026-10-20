@@ -7,8 +7,11 @@
 // direct path. To use your own broker, run `npx peerjs --port 9000` and set
 // `peer: { host, port, path, secure }` below.
 export const NET = {
-  // Public page the guest opens. It contains no game code and no ROM, only
-  // the page, PeerJS and the video player (see .github/workflows/pages.yml).
+  // Public page the guest opens when the host plays from localhost. It holds
+  // no game code and no ROM: only the page, PeerJS and the video player
+  // (built by scripts/prepare-public.mjs). Change it to wherever you publish
+  // that copy, e.g. 'https://rockanrola.pages.dev/'. A host page that is
+  // itself on a public https site uses its own address automatically.
   guestUrl: 'https://luckohub.github.io/rockandrolla/',
   idPrefix: 'rockanrola-v1-',
   peer: { host: '0.peerjs.com', port: 443, path: '/', secure: true },

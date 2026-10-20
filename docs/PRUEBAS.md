@@ -82,6 +82,12 @@ ROM verificada: Rock n' Roll Racing (USA), SHA-256 `9d721753…4b182`, aportada 
 
 Limitación de la prueba: corre en un solo equipo, sin una red real entre medio. Falta probar con tu hermano en otra conexión.
 
+**Página pública.** Con `node scripts\online-test.mjs --public`, el invitado abre la copia de `prepare-public.mjs` bajo un dominio que no es localhost, `rockanrola.test`, tratado como contexto seguro igual que HTTPS. Resultado en Chrome: 24/24, incluidos video, mando 2 y pausa. La copia pública tiene 14 archivos y excluye el motor.
+
+**Edge sin interfaz.** La prueba `browser-test.mjs --local-rom`, con una sola ventana, falló de forma intermitente en Edge. El navegador trata esa ventana como si estuviera en segundo plano: baja a 1–30 fps y rechaza la pantalla completa. En las mismas condiciones, Chrome pasa 14/14 de forma estable, y en `online-test.mjs` Edge corre el juego real a 60 fps y pasa 23/23. Queda verificar Edge a mano en una ventana normal.
+
+**Procesos colgados.** Las primeras versiones de las pruebas dejaban procesos de Edge abiertos al terminar: se acumularon 261 y agotaron la memoria del equipo. Desde la corrección, cada prueba cierra el navegador por CDP y termina todo su árbol de procesos. Se verificó que no queda ninguno.
+
 ## Pendientes
 
 | Prueba | Motivo |

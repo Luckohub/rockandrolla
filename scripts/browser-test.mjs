@@ -9,7 +9,7 @@
 // legal copy, read locally) it also boots the game, presses Start, measures
 // frame rate and audio, exercises pause/reset/snapshots and saves
 // screenshots to build/browser-test/.
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -57,6 +57,7 @@ const browser = spawn(exe, [
   '--no-first-run', '--no-default-browser-check', '--autoplay-policy=no-user-gesture-required',
   // Automation: do not throttle windows the OS reports as hidden/occluded.
   '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling',
+  '--disable-features=CalculateNativeWinOcclusion',
   '--window-size=1280,900', 'about:blank',
 ], { stdio: 'ignore' });
 
@@ -138,6 +139,14 @@ const tap = async (code, keyName, holdMs = 120) => { await key(code, keyName, 'k
 class Done extends Error {}
 
 async function gameChecks() {
+  // Edge headless sometimes opens its own start page in front of ours; a
+  // hidden tab is throttled to ~1 fps and cannot enter fullscreen.
+  for (let i = 0; i < 5 && (await evaluate('document.visibilityState')) !== 'visible'; i++) {
+    await send('Page.bringToFront');
+    await sleep(500);
+  }
+  const vis = await evaluate('document.visibilityState');
+  check('pestaña de prueba visible (entorno)', vis === 'visible', vis);
     await sleep(6000);
     await screenshot('4-arranque');
     for (let i = 0; i < 6; i++) { await tap('Enter', 'Enter'); await sleep(1500); }
@@ -186,9 +195,19 @@ async function gameChecks() {
     await screenshot('7-final');
 }
 
-function cleanup(code) {
+// Ends the whole browser: a polite CDP Browser.close first, then the full
+// process tree (on Windows, killing only the parent leaves renderer and GPU
+// processes running and they pile up across runs).
+async function closeBrowser(child, closeViaCdp) {
+  try { await Promise.race([closeViaCdp(), sleep(1500)]); } catch { /* already gone */ }
+  await sleep(300);
+  if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+  else { try { child.kill('SIGKILL'); } catch { /* ignore */ } }
+}
+
+async function cleanup(code) {
+  await closeBrowser(browser, () => send('Browser.close'));
   try { ws?.close(); } catch { /* ignore */ }
-  try { browser.kill(); } catch { /* ignore */ }
   try { server.kill(); } catch { /* ignore */ }
   setTimeout(() => { try { rmSync(profile, { recursive: true, force: true }); } catch { /* locked */ } process.exit(code); }, 500);
 }
